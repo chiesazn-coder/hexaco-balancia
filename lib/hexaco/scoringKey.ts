@@ -1,4 +1,4 @@
-import { ScoringKey } from "@/types/hexaco";
+import { ScoringKey } from "@/lib/types/hexaco";
 
 export const SCORING_KEY: ScoringKey = {
   "Honesty-Humility": {

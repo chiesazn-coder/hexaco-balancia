@@ -20,3 +20,16 @@ export interface HexacoResult {
   altruism: FacetScore;
   completedAt: string;
 }
+
+export interface Question {
+  id: number;
+  text: string;
+  reverse: boolean;
+}
+
+export interface ScoreItem {
+  id: number;
+  r: boolean;
+}
+
+export type ScoringKey = Record<string, Record<string, ScoreItem[]>>;

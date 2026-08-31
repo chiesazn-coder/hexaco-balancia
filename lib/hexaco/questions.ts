@@ -1,4 +1,4 @@
-import { Question } from "@/types/hexaco";
+import { Question } from "@/lib/types/hexaco";
 
 export const HEXACO_QUESTIONS: Question[] = [
   { id: 1, text: "Saya akan cukup bosan ketika mengunjungi sebuah pameran seni.", reverse: true },

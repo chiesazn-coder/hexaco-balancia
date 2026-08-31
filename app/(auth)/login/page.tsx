@@ -54,6 +54,7 @@ export default function LoginPage() {
       const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
       await redirectCandidate(credential.user.uid);
     } catch (caughtError) {
+      console.error(caughtError);
       showAuthError(caughtError);
     }
   }
@@ -65,6 +66,7 @@ export default function LoginPage() {
       const credential = await signInWithPopup(auth, new GoogleAuthProvider());
       await redirectCandidate(credential.user.uid);
     } catch (caughtError) {
+      console.error(caughtError);
       showAuthError(caughtError);
     }
   }

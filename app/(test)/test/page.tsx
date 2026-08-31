@@ -72,7 +72,8 @@ export default function TestPage() {
         setUser(currentUser);
         setCandidate({ nama: data.nama, pendidikan: data.pendidikan, tanggalLahir: data.tanggalLahir, hasSubmitted: data.hasSubmitted });
         setIsChecking(false);
-      } catch {
+      } catch (caughtError) {
+        console.error(caughtError);
         if (!active) return;
         setError("Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
         setIsChecking(false);
@@ -133,7 +134,8 @@ export default function TestPage() {
       await batch.commit();
       localStorage.removeItem(`hexacoResponses:${user.uid}`);
       router.replace("/thankyou");
-    } catch {
+    } catch (caughtError) {
+      console.error(caughtError);
       setError("Jawaban gagal dikirim. Data sementara tetap tersimpan; silakan coba kembali.");
       setIsSubmitting(false);
     }

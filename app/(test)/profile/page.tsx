@@ -25,14 +25,19 @@ export default function ProfilePage() {
       try {
         const snapshot = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
         if (!active) return;
-        const nama = snapshot.exists() ? snapshot.data().nama : undefined;
-        if (typeof nama === "string" && nama.trim()) {
+        const data = snapshot.exists() ? snapshot.data() : undefined;
+        if (data?.hasSubmitted === true) {
+          router.replace("/thankyou");
+          return;
+        }
+        if (typeof data?.nama === "string" && data.nama.trim()) {
           router.replace("/test");
           return;
         }
         setUser(currentUser);
         setIsChecking(false);
-      } catch {
+      } catch (caughtError) {
+        console.error(caughtError);
         if (!active) return;
         setUser(currentUser);
         setError("Data peserta belum dapat diperiksa. Silakan coba kembali.");
@@ -62,11 +67,11 @@ export default function ProfilePage() {
         pendidikan: String(formData.get("pendidikan") ?? ""),
         tanggalLahir: String(formData.get("tanggalLahir") ?? ""),
         email: user.email,
-        hasSubmitted: false,
         createdAt: serverTimestamp(),
       }, { merge: true });
       router.replace("/test");
-    } catch {
+    } catch (caughtError) {
+      console.error(caughtError);
       setError("Data diri gagal disimpan. Periksa koneksi Anda lalu coba kembali.");
       setIsSaving(false);
     }

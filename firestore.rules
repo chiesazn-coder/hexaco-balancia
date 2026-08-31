@@ -1,0 +1,36 @@
+// CATATAN: File ini HANYA berisi dua match block baru untuk HEXACO
+// (hexacoCandidates & hexacoSessions), sesuai hasil audit FIX 3.
+//
+// Project Firebase ini (balancia-attendance-mobile) dipakai bersama app lain.
+// JANGAN replace rules yang sudah ada di Firebase Console — salin dua
+// match block di bawah ini ke dalam `service cloud.firestore { match /databases/{database}/documents { ... } }`
+// yang sudah ada di Console, di samping match block untuk collection lain
+// (mis. attendance/users), lalu deploy dari Console atau via:
+//   firebase deploy --only firestore:rules
+//
+// Belum dideploy secara otomatis oleh Claude — perlu ditempel manual ke
+// Firebase Console > Firestore Database > Rules, karena ini mengubah
+// akses data produksi yang dipakai bersama app lain.
+
+match /hexacoCandidates/{uid} {
+  // Kandidat hanya bisa baca & tulis data diri sendiri
+  allow read: if request.auth != null && request.auth.uid == uid;
+  // Hanya boleh create atau update field selain hasSubmitted
+  // hasSubmitted hanya boleh diubah dari false -> true, tidak bisa balik
+  allow create: if request.auth != null && request.auth.uid == uid;
+  allow update: if request.auth != null
+    && request.auth.uid == uid
+    && !(request.resource.data.hasSubmitted == false
+         && resource.data.hasSubmitted == true);
+}
+
+match /hexacoSessions/{sessionId} {
+  // Kandidat hanya bisa create sekali, tidak bisa update/delete
+  allow create: if request.auth != null
+    && request.resource.data.candidateId == request.auth.uid;
+  allow read: if request.auth != null
+    && (request.auth.uid == resource.data.candidateId
+        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+           in ["admin", "hcga_manager", "hcga_admin"]);
+  allow update, delete: if false;
+}
