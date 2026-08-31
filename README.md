@@ -1,4 +1,6 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# hexaco-balancia
+
+HEXACO Personality Inventory untuk asesmen calon pegawai PT Balancia. Dibangun dengan Next.js 14, TypeScript, Tailwind CSS, Firebase Authentication, dan Cloud Firestore.
 
 ## Getting Started
 
