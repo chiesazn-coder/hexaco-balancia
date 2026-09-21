@@ -49,7 +49,7 @@ export default function TestPage() {
         const snapshot = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
         if (!active) return;
         if (snapshot.exists() && snapshot.data().hasSubmitted === true) {
-          router.replace("/thankyou");
+          router.replace("/test-hub");
           return;
         }
         const data = snapshot.exists() ? snapshot.data() : null;
@@ -133,7 +133,7 @@ export default function TestPage() {
       batch.update(candidateRef, { hasSubmitted: true, sessionId: sessionRef.id });
       await batch.commit();
       localStorage.removeItem(`hexacoResponses:${user.uid}`);
-      router.replace("/thankyou");
+      router.replace("/test-hub");
     } catch (caughtError) {
       console.error(caughtError);
       setError("Jawaban gagal dikirim. Data sementara tetap tersimpan; silakan coba kembali.");

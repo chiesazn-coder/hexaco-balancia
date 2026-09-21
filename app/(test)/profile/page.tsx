@@ -27,11 +27,11 @@ export default function ProfilePage() {
         if (!active) return;
         const data = snapshot.exists() ? snapshot.data() : undefined;
         if (data?.hasSubmitted === true) {
-          router.replace("/thankyou");
+          router.replace("/test-hub");
           return;
         }
         if (typeof data?.nama === "string" && data.nama.trim()) {
-          router.replace("/test");
+          router.replace("/test-hub");
           return;
         }
         setUser(currentUser);
@@ -69,7 +69,7 @@ export default function ProfilePage() {
         email: user.email,
         createdAt: serverTimestamp(),
       }, { merge: true });
-      router.replace("/test");
+      router.replace("/test-hub");
     } catch (caughtError) {
       console.error(caughtError);
       setError("Data diri gagal disimpan. Periksa koneksi Anda lalu coba kembali.");

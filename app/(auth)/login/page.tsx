@@ -31,7 +31,7 @@ export default function LoginPage() {
   async function redirectCandidate(uid: string) {
     const candidateSnapshot = await getDoc(doc(db, "hexacoCandidates", uid));
     const hasSubmitted = candidateSnapshot.exists() && candidateSnapshot.data().hasSubmitted === true;
-    router.replace(hasSubmitted ? "/thankyou" : "/profile");
+    router.replace(hasSubmitted ? "/test-hub" : "/profile");
   }
 
   function showAuthError(caughtError: unknown) {

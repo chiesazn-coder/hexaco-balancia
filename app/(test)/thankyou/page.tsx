@@ -2,13 +2,56 @@
 
 import { auth } from "@/lib/firebase";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
-import { signOut } from "firebase/auth";
-import { useEffect } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { loadCompletion } from "../subtests";
 
 export default function ThankYouPage() {
+  const router = useRouter();
+  const [isVerified, setIsVerified] = useState(false);
+  const [error, setError] = useState("");
+
   useEffect(() => {
-    void signOut(auth).catch(() => undefined);
-  }, []);
+    let active = true;
+    let completed = false;
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
+        // signOut di bawah memicu callback ini lagi dengan user null; jangan diarahkan ke login.
+        if (!completed) router.replace("/login");
+        return;
+      }
+
+      try {
+        const allDone = (await loadCompletion(currentUser.uid)).every(Boolean);
+        if (!active) return;
+        if (!allDone) {
+          router.replace("/test-hub");
+          return;
+        }
+        completed = true;
+        setIsVerified(true);
+        await signOut(auth).catch(() => undefined);
+      } catch (caughtError) {
+        console.error(caughtError);
+        if (!active) return;
+        setError("Status tes belum dapat diperiksa. Periksa koneksi Anda lalu muat ulang halaman ini.");
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [router]);
+
+  if (!isVerified) {
+    return (
+      <main className="grid min-h-[calc(100vh-65px)] place-items-center px-5">
+        {error ? <p role="alert" className="max-w-md text-center text-sm text-red-700">{error}</p> : <p className="text-sm font-medium text-slate-500">Memeriksa status tes...</p>}
+      </main>
+    );
+  }
 
   return (
     <main className="grid min-h-[calc(100vh-65px)] place-items-center bg-[#f0ede8] px-5 py-12">
