@@ -1,7 +1,7 @@
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-export type SubTestStatus = "completed" | "current" | "locked";
+export type SubTestStatus = "completed" | "in_progress" | "available";
 
 export interface SubTest {
   id: string;
@@ -9,9 +9,21 @@ export interface SubTest {
   description: string;
   href: string;
   isCompleted: (uid: string) => Promise<boolean>;
+  // Firestore hanya menyimpan sesi yang sudah selesai, jadi "sedang dikerjakan" hanya bisa dideteksi
+  // dari cadangan jawaban di localStorage (per perangkat) milik tes tersebut.
+  isInProgress: (uid: string) => boolean;
 }
 
-// Urutan array = urutan pengerjaan. Untuk menambah tes baru, cukup tambahkan satu entri di sini.
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+// Urutan array = urutan tampil di hub (tes boleh dikerjakan dalam urutan apa pun).
+// Untuk menambah tes baru, cukup tambahkan satu entri di sini.
 export const SUB_TESTS: SubTest[] = [
   {
     id: "hexaco",
@@ -22,6 +34,8 @@ export const SUB_TESTS: SubTest[] = [
       const snapshot = await getDoc(doc(db, "hexacoCandidates", uid));
       return snapshot.exists() && snapshot.data().hasSubmitted === true;
     },
+    // Cadangan jawaban dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
+    isInProgress: (uid) => readStorage(`hexacoResponses:${uid}`) !== null,
   },
   {
     id: "kraepelin",
@@ -37,6 +51,17 @@ export const SUB_TESTS: SubTest[] = [
         return false;
       }
     },
+    // Progres hanya disimpan setelah kolom pertama selesai (colIdx > 0).
+    isInProgress: (uid) => {
+      const raw = readStorage(`kraepelinProgress:${uid}`);
+      if (!raw) return false;
+      try {
+        const parsed = JSON.parse(raw) as { colIdx?: unknown };
+        return typeof parsed.colIdx === "number" && parsed.colIdx > 0;
+      } catch {
+        return false;
+      }
+    },
   },
 ];
 
@@ -45,8 +70,14 @@ export function loadCompletion(uid: string): Promise<boolean[]> {
   return Promise.all(SUB_TESTS.map((subTest) => subTest.isCompleted(uid)));
 }
 
-// Tes pertama yang belum selesai menjadi "current"; sisanya yang belum selesai "locked".
-export function getStatuses(completion: boolean[]): SubTestStatus[] {
-  const currentIndex = completion.findIndex((done) => !done);
-  return completion.map((done, index) => (done ? "completed" : index === currentIndex ? "current" : "locked"));
+// Mengembalikan id tes (mis. "hexaco") yang sedang dikerjakan, atau null. Tes yang sudah selesai
+// (completedIds) dilewati agar cadangan localStorage yang basi tidak dianggap sedang dikerjakan.
+export function getInProgressTest(uid: string, completedIds: readonly string[] = []): string | null {
+  const active = SUB_TESTS.find((subTest) => !completedIds.includes(subTest.id) && subTest.isInProgress(uid));
+  return active?.id ?? null;
+}
+
+// Selesai = "completed"; tes yang sedang dikerjakan = "in_progress"; sisanya "available".
+export function getStatuses(completion: boolean[], inProgressId: string | null): SubTestStatus[] {
+  return completion.map((done, index) => (done ? "completed" : SUB_TESTS[index].id === inProgressId ? "in_progress" : "available"));
 }

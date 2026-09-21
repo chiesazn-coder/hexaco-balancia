@@ -103,12 +103,21 @@ export default function KraepelinPage() {
       }
 
       try {
-        const candidate = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
-        if (!active) return;
-        if (!candidate.exists() || candidate.data().hasSubmitted !== true) {
-          router.replace("/test-hub");
-          return;
+        // Profil (nama) wajib ada agar dashboard punya nama untuk ditampilkan. Gagal membaca tidak
+        // mengalihkan (fail open) supaya error Firestore sementara tidak memblokir tes.
+        try {
+          const candidate = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
+          if (!active) return;
+          const nama = candidate.exists() ? candidate.data().nama : undefined;
+          if (typeof nama !== "string" || !nama.trim()) {
+            router.replace("/profile");
+            return;
+          }
+        } catch (profileError) {
+          console.error(profileError);
+          if (!active) return;
         }
+
         const session = await getDoc(doc(db, "kraepelinSessions", currentUser.uid));
         if (!active) return;
         if (session.exists()) {
