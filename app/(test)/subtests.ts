@@ -27,7 +27,7 @@ function readStorage(key: string): string | null {
 export const SUB_TESTS: SubTest[] = [
   {
     id: "hexaco",
-    label: "HEXACO",
+    label: "Tes Psikotes 1",
     description: "Inventori kepribadian, 100 pernyataan.",
     href: "/test/hexaco",
     isCompleted: async (uid) => {
@@ -39,7 +39,7 @@ export const SUB_TESTS: SubTest[] = [
   },
   {
     id: "kraepelin",
-    label: "Kraepelin",
+    label: "Tes Psikotes 2",
     description: "Tes ketelitian dan ketahanan kerja.",
     href: "/test/kraepelin",
     isCompleted: async (uid) => {

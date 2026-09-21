@@ -1,7 +1,7 @@
 "use client";
 
 import { auth, db } from "@/lib/firebase";
-import { LockClosedIcon } from "@heroicons/react/24/outline";
+import { BuildingOffice2Icon } from "@heroicons/react/24/outline";
 import { FirebaseError } from "firebase/app";
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -76,10 +76,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-primary text-white shadow-lg shadow-blue-950/15">
-            <LockClosedIcon className="h-7 w-7" aria-hidden="true" />
+            <BuildingOffice2Icon className="h-7 w-7" aria-hidden="true" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Hexaco Personality Inventory</h1>
-          <p className="mt-2 text-sm font-medium text-slate-600">PT Balancia — Asesmen Calon Pegawai</p>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">Asesmen PT Balancia</h1>
+          <p className="mt-2 text-sm font-medium text-slate-600">Selamat datang. Silakan masuk untuk melanjutkan.</p>
         </div>
 
         <div className="rounded-3xl bg-white p-7 shadow-[0_20px_60px_rgba(44,50,60,.10)] sm:p-9">
