@@ -63,6 +63,40 @@ export const SUB_TESTS: SubTest[] = [
       }
     },
   },
+  {
+    id: "ist",
+    label: "Tes Psikotes 3",
+    description: "Tes inteligensi, 5 bagian.",
+    href: "/test/ist",
+    isCompleted: async (uid) => {
+      // Rules istSessions belum tentu terpasang: gagal baca dianggap belum selesai.
+      try {
+        const snapshot = await getDoc(doc(db, "istSessions", uid));
+        return snapshot.exists();
+      } catch {
+        return false;
+      }
+    },
+    // Cadangan dibuat saat "Mulai Tes" ditekan dan dihapus saat submit berhasil.
+    isInProgress: (uid) => readStorage(`istProgress:${uid}`) !== null,
+  },
+  {
+    id: "papi",
+    label: "Tes Psikotes 4",
+    description: "Tes kepribadian, 90 pernyataan.",
+    href: "/test/papi",
+    isCompleted: async (uid) => {
+      // Rules papiSessions belum tentu terpasang: gagal baca dianggap belum selesai.
+      try {
+        const snapshot = await getDoc(doc(db, "papiSessions", uid));
+        return snapshot.exists();
+      } catch {
+        return false;
+      }
+    },
+    // Cadangan dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
+    isInProgress: (uid) => readStorage(`papiProgress:${uid}`) !== null,
+  },
 ];
 
 // Hasil sejajar dengan SUB_TESTS. Error dari tes mana pun (selain yang menanganinya sendiri) dilempar ke pemanggil.

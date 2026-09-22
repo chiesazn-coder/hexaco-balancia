@@ -1,11 +1,44 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { loadCompletion } from "../subtests";
+import { SUB_TESTS } from "../subtests";
+
+const KRAEPELIN_ID = "kraepelin";
+
+// Tes yang ditambahkan belakangan. Diwajibkan bagi semua kandidat, kecuali masa tenggang di bawah berlaku.
+const LATE_ADDED_TEST_IDS = ["ist", "papi"];
+
+// Peluncuran tiap tes yang ditambahkan belakangan (Asia/Jakarta). Masa tenggang untuk tes X hanya berlaku
+// bagi kandidat yang men-submit Kraepelin SEBELUM peluncuran tes X (mereka selesai sebelum tes itu ada);
+// submit pada/setelah waktu itu tetap harus menyelesaikan tes X.
+const IST_LAUNCH_MS = Date.parse("2026-09-21T00:00:00+07:00");
+const PAPI_LAUNCH_MS = Date.parse("2026-09-22T00:00:00+07:00");
+
+// Cutoff per id tes yang ditambahkan belakangan. Harus sejajar dengan LATE_ADDED_TEST_IDS.
+const LATE_ADDED_LAUNCH_MS: Record<string, number> = { ist: IST_LAUNCH_MS, papi: PAPI_LAUNCH_MS };
+
+// Waktu submit (ms) dari dokumen kraepelinSessions, atau null bila tidak ada / tidak terbaca.
+function getSubmittedMs(data: { submittedAt?: { toMillis?: () => number } } | undefined): number | null {
+  const submittedAt = data?.submittedAt;
+  return typeof submittedAt?.toMillis === "function" ? submittedAt.toMillis() : null;
+}
+
+// completion sejajar dengan SUB_TESTS. Tes yang ditambahkan belakangan dibebaskan hanya bila Kraepelin
+// disubmit sebelum peluncuran TES ITU SENDIRI (per tes, bukan satu cutoff global); tes lain (HEXACO,
+// Kraepelin) selalu wajib.
+function canShowThankYou(completion: boolean[], kraepelinSubmittedMs: number | null): boolean {
+  return SUB_TESTS.every((subTest, index) => {
+    if (completion[index]) return true;
+    if (!LATE_ADDED_TEST_IDS.includes(subTest.id)) return false;
+    const launchMs = LATE_ADDED_LAUNCH_MS[subTest.id];
+    return kraepelinSubmittedMs !== null && kraepelinSubmittedMs < launchMs;
+  });
+}
 
 export default function ThankYouPage() {
   const router = useRouter();
@@ -23,8 +56,19 @@ export default function ThankYouPage() {
       }
 
       try {
-        const allDone = (await loadCompletion(currentUser.uid)).every(Boolean);
+        // Satu kali baca kraepelinSessions dipakai untuk status selesai sekaligus tanggal submit (masa tenggang).
+        // Gagal membaca -> null: fail open (tampilkan halaman ini) agar error sementara tidak memblokir kandidat.
+        const [kraepelin, otherCompletion] = await Promise.all([
+          getDoc(doc(db, "kraepelinSessions", currentUser.uid)).catch((readError) => {
+            console.error(readError);
+            return null;
+          }),
+          Promise.all(SUB_TESTS.map((subTest) => (subTest.id === KRAEPELIN_ID ? Promise.resolve(false) : subTest.isCompleted(currentUser.uid)))),
+        ]);
         if (!active) return;
+        const completion = otherCompletion.map((done, index) => (SUB_TESTS[index].id === KRAEPELIN_ID ? !!kraepelin?.exists() : done));
+        const kraepelinSubmittedMs = kraepelin?.exists() ? getSubmittedMs(kraepelin.data()) : null;
+        const allDone = kraepelin === null || canShowThankYou(completion, kraepelinSubmittedMs);
         if (!allDone) {
           router.replace("/test-hub");
           return;

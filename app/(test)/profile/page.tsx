@@ -13,6 +13,10 @@ export default function ProfilePage() {
   const [isChecking, setIsChecking] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [nama, setNama] = useState("");
+  const [jenisKelamin, setJenisKelamin] = useState("");
+  const [pendidikan, setPendidikan] = useState("");
+  const [tanggalLahir, setTanggalLahir] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -30,10 +34,17 @@ export default function ProfilePage() {
           router.replace("/test-hub");
           return;
         }
-        if (typeof data?.nama === "string" && data.nama.trim()) {
+        const hasNama = typeof data?.nama === "string" && data.nama.trim();
+        const hasJenisKelamin = typeof data?.jenisKelamin === "string" && data.jenisKelamin.trim();
+        if (hasNama && hasJenisKelamin) {
           router.replace("/test-hub");
           return;
         }
+        // Profil sudah ada tetapi belum lengkap (mis. dibuat sebelum jenisKelamin ada): isi ulang form
+        // dengan data yang tersimpan agar kandidat tinggal melengkapi field yang kurang.
+        if (typeof data?.nama === "string") setNama(data.nama);
+        if (typeof data?.pendidikan === "string") setPendidikan(data.pendidikan);
+        if (typeof data?.tanggalLahir === "string") setTanggalLahir(data.tanggalLahir);
         setUser(currentUser);
         setIsChecking(false);
       } catch (caughtError) {
@@ -51,6 +62,8 @@ export default function ProfilePage() {
     };
   }, [router]);
 
+  const isFormValid = nama.trim() !== "" && jenisKelamin !== "" && pendidikan !== "" && tanggalLahir !== "";
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user) {
@@ -58,14 +71,14 @@ export default function ProfilePage() {
       return;
     }
 
-    const formData = new FormData(event.currentTarget);
     setError("");
     setIsSaving(true);
     try {
       await setDoc(doc(db, "hexacoCandidates", user.uid), {
-        nama: String(formData.get("nama") ?? "").trim(),
-        pendidikan: String(formData.get("pendidikan") ?? ""),
-        tanggalLahir: String(formData.get("tanggalLahir") ?? ""),
+        nama: nama.trim(),
+        jenisKelamin,
+        pendidikan,
+        tanggalLahir,
         email: user.email,
         createdAt: serverTimestamp(),
       }, { merge: true });
@@ -91,23 +104,30 @@ export default function ProfilePage() {
         <form onSubmit={handleSubmit} className="mt-8 space-y-5">
           <div>
             <label htmlFor="nama" className="mb-2 block text-sm font-semibold text-slate-700">Nama Lengkap</label>
-            <input id="nama" name="nama" type="text" autoComplete="name" required className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100" />
+            <input id="nama" name="nama" type="text" autoComplete="name" required value={nama} onChange={(event) => setNama(event.target.value)} className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100" />
+          </div>
+          <div>
+            <label htmlFor="jenisKelamin" className="mb-2 block text-sm font-semibold text-slate-700">Jenis Kelamin</label>
+            <select id="jenisKelamin" name="jenisKelamin" required value={jenisKelamin} onChange={(event) => setJenisKelamin(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100">
+              <option value="" disabled>Pilih jenis kelamin</option>
+              <option value="Laki-laki">Laki-laki</option><option value="Perempuan">Perempuan</option>
+            </select>
           </div>
           <div>
             <label htmlFor="pendidikan" className="mb-2 block text-sm font-semibold text-slate-700">Pendidikan Terakhir</label>
-            <select id="pendidikan" name="pendidikan" required defaultValue="" className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100">
+            <select id="pendidikan" name="pendidikan" required value={pendidikan} onChange={(event) => setPendidikan(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100">
               <option value="" disabled>Pilih pendidikan terakhir</option>
               <option value="SMA/SMK">SMA/SMK</option><option value="D3">D3</option><option value="S1">S1</option><option value="S2">S2</option><option value="S3">S3</option>
             </select>
           </div>
           <div>
             <label htmlFor="tanggalLahir" className="mb-2 block text-sm font-semibold text-slate-700">Tanggal Lahir</label>
-            <input id="tanggalLahir" name="tanggalLahir" type="date" autoComplete="bday" required className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100" />
+            <input id="tanggalLahir" name="tanggalLahir" type="date" autoComplete="bday" required value={tanggalLahir} onChange={(event) => setTanggalLahir(event.target.value)} className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100" />
           </div>
 
           {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-          <button type="submit" disabled={isSaving} className="w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="submit" disabled={isSaving || !isFormValid} className="w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60">
             {isSaving ? "Menyimpan..." : "Lanjut ke Tes"}
           </button>
         </form>
