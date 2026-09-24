@@ -63,12 +63,38 @@ function phaseSeconds(index: number, memorize: boolean): number {
   return memorize && subtest.kind === "choice" && subtest.memorizeSeconds ? subtest.memorizeSeconds : subtest.durationSeconds;
 }
 
+const hasMemorizePhase = (index: number) => {
+  const subtest = IST_SUBTESTS[index];
+  return subtest.kind === "choice" && !!subtest.memorizeSeconds;
+};
+
+// Waktu mulai fase yang sedang berjalan (ms). mePhase hanya ada untuk bagian dengan fase hafal (ME).
+// null = di antara bagian (hitung mundur) — belum ada fase yang berjalan.
+type PhaseTiming = { startedAt: number; mePhase?: "memorize" | "questions" };
+
+// Sisa waktu fase dari tenggat (startedAt + lama fase), dibatasi 0..lama fase.
+function secondsLeft(startedAt: number, seconds: number): number {
+  return Math.min(seconds, Math.max(0, Math.round((startedAt + seconds * 1000 - Date.now()) / 1000)));
+}
+
+// Fase yang dilanjutkan setelah halaman dimuat ulang, atau null jika waktu bagian ini sudah habis.
+// Fase hafal yang sudah habis diteruskan ke fase soal yang dianggap mulai tepat saat fase hafal berakhir.
+function resumePhase(index: number, timing: PhaseTiming): { timing: PhaseTiming; memorize: boolean; remaining: number } | null {
+  if (hasMemorizePhase(index) && timing.mePhase !== "questions") {
+    const remaining = secondsLeft(timing.startedAt, phaseSeconds(index, true));
+    if (remaining > 0) return { timing: { startedAt: timing.startedAt, mePhase: "memorize" }, memorize: true, remaining };
+    timing = { startedAt: timing.startedAt + phaseSeconds(index, true) * 1000, mePhase: "questions" };
+  }
+  const remaining = secondsLeft(timing.startedAt, phaseSeconds(index, false));
+  return remaining > 0 ? { timing, memorize: false, remaining } : null;
+}
+
 // currentSubtest = indeks bagian yang akan/sedang dikerjakan; SUBTEST_COUNT = semua bagian selesai, tinggal dikirim.
-function readProgress(uid: string): { currentSubtest: number; answers: IstAnswers } | null {
+function readProgress(uid: string): { currentSubtest: number; answers: IstAnswers; timing: PhaseTiming | null } | null {
   try {
     const raw = localStorage.getItem(storageKey(uid));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { currentSubtest?: unknown; answers?: Record<string, unknown> };
+    const parsed = JSON.parse(raw) as { currentSubtest?: unknown; answers?: Record<string, unknown>; startedAt?: unknown; mePhase?: unknown };
     if (typeof parsed.currentSubtest === "number" && Number.isInteger(parsed.currentSubtest) && parsed.currentSubtest >= 0 && parsed.currentSubtest <= SUBTEST_COUNT && parsed.answers) {
       const answers = createEmptyAnswers();
       const valid = IST_SUBTESTS.every((subtest) => {
@@ -78,7 +104,12 @@ function readProgress(uid: string): { currentSubtest: number; answers: IstAnswer
         answers[subtest.key] = saved as (string | null)[];
         return true;
       });
-      if (valid) return { currentSubtest: parsed.currentSubtest, answers };
+      // startedAt yang tidak valid (bukan angka / di masa depan) dianggap tidak ada: bagian dimulai ulang dari hitung mundur.
+      const timing: PhaseTiming | null =
+        typeof parsed.startedAt === "number" && Number.isFinite(parsed.startedAt) && parsed.startedAt <= Date.now()
+          ? { startedAt: parsed.startedAt, mePhase: parsed.mePhase === "memorize" || parsed.mePhase === "questions" ? parsed.mePhase : undefined }
+          : null;
+      if (valid) return { currentSubtest: parsed.currentSubtest, answers, timing };
     }
     localStorage.removeItem(storageKey(uid));
   } catch {
@@ -93,9 +124,9 @@ function readProgress(uid: string): { currentSubtest: number; answers: IstAnswer
   return null;
 }
 
-function saveProgress(uid: string, currentSubtest: number, answers: IstAnswers) {
+function saveProgress(uid: string, currentSubtest: number, answers: IstAnswers, timing: PhaseTiming | null) {
   try {
-    localStorage.setItem(storageKey(uid), JSON.stringify({ currentSubtest, answers }));
+    localStorage.setItem(storageKey(uid), JSON.stringify({ currentSubtest, answers, ...timing }));
   } catch {
     // Cadangan lokal bersifat opsional.
   }
@@ -117,6 +148,8 @@ export default function IstPage() {
   const [submitError, setSubmitError] = useState("");
   // Salinan jawaban terbaru untuk callback timer; ref fungsi agar interval selalu memanggil versi terbaru.
   const answersRef = useRef<IstAnswers>(createEmptyAnswers());
+  // Waktu mulai fase yang sedang berjalan; ikut disimpan di cadangan agar timer tidak diulang saat muat ulang.
+  const timingRef = useRef<PhaseTiming | null>(null);
   const focusInputRef = useRef<HTMLInputElement | null>(null);
   const timeUpRef = useRef<() => void>(() => {});
   const beginRef = useRef<(index: number) => void>(() => {});
@@ -185,17 +218,33 @@ export default function IstPage() {
           return;
         }
 
+        let currentSubtest = restored.currentSubtest;
+        const resumed = currentSubtest < SUBTEST_COUNT && restored.timing ? resumePhase(currentSubtest, restored.timing) : null;
+        if (currentSubtest < SUBTEST_COUNT && restored.timing && !resumed) {
+          // Waktu bagian yang sedang berjalan sudah habis selama halaman tertutup: langsung ke bagian berikutnya.
+          currentSubtest += 1;
+          saveProgress(currentUser.uid, currentSubtest, restored.answers, null);
+        }
+
         answersRef.current = restored.answers;
         setAnswers(restored.answers);
-        setSubIdx(Math.min(restored.currentSubtest, SUBTEST_COUNT - 1));
+        setSubIdx(Math.min(currentSubtest, SUBTEST_COUNT - 1));
         setIsChecking(false);
-        if (restored.currentSubtest >= SUBTEST_COUNT) {
+        if (currentSubtest >= SUBTEST_COUNT) {
           // Semua bagian sudah selesai tetapi pengiriman sebelumnya gagal: kirim ulang.
           setIsFinished(true);
           void submit(restored.answers, currentUser.uid);
           return;
         }
-        // Kembali ke bagian yang sedang berjalan dengan timer baru (jawaban yang tersimpan dipertahankan).
+        if (resumed) {
+          // Lanjutkan fase yang sedang berjalan dengan sisa waktunya (jawaban yang tersimpan dipertahankan).
+          timingRef.current = resumed.timing;
+          saveProgress(currentUser.uid, currentSubtest, restored.answers, resumed.timing);
+          setTimeLeft(resumed.remaining);
+          setPhase(resumed.memorize ? "me_memorize" : "subtest");
+          return;
+        }
+        // Belum ada fase yang berjalan (muat ulang saat hitung mundur): mulai bagian ini dari hitung mundur.
         setPhase("countdown");
       } catch (caughtError) {
         console.error(caughtError);
@@ -212,8 +261,9 @@ export default function IstPage() {
   }, [router, submit]);
 
   function beginSubtest(index: number) {
-    const target = IST_SUBTESTS[index];
-    const hasMemorize = target.kind === "choice" && !!target.memorizeSeconds;
+    const hasMemorize = hasMemorizePhase(index);
+    timingRef.current = hasMemorize ? { startedAt: Date.now(), mePhase: "memorize" } : { startedAt: Date.now() };
+    if (user) saveProgress(user.uid, index, answersRef.current, timingRef.current);
     setSubIdx(index);
     setQIdx(0);
     setTimeLeft(phaseSeconds(index, hasMemorize));
@@ -223,7 +273,8 @@ export default function IstPage() {
   function finishSubtest() {
     if (!user || isFinished) return;
     const next = subIdx + 1;
-    saveProgress(user.uid, next, answersRef.current);
+    timingRef.current = null;
+    saveProgress(user.uid, next, answersRef.current, null);
     if (next >= SUBTEST_COUNT) {
       setIsFinished(true);
       void submit(answersRef.current, user.uid);
@@ -237,6 +288,8 @@ export default function IstPage() {
   function handleTimeUp() {
     if (phase === "me_memorize") {
       // Fase hafal selesai: lanjut ke soal bagian yang sama dengan timer baru.
+      timingRef.current = { startedAt: Date.now(), mePhase: "questions" };
+      if (user) saveProgress(user.uid, subIdx, answersRef.current, timingRef.current);
       setQIdx(0);
       setTimeLeft(phaseSeconds(subIdx, false));
       setPhase("subtest");
@@ -267,13 +320,14 @@ export default function IstPage() {
     return () => clearInterval(interval);
   }, [phase, subIdx, isChecking]);
 
-  // Timer fase hafal dan fase soal. Sisa waktu dihitung dari tenggat agar tab yang di-throttle browser
-  // tidak memperpanjang waktu.
+  // Timer fase hafal dan fase soal. Sisa waktu dihitung dari tenggat (startedAt + lama fase) agar tab yang
+  // di-throttle browser maupun muat ulang halaman tidak memperpanjang waktu.
   useEffect(() => {
     if ((phase !== "subtest" && phase !== "me_memorize") || isChecking || isFinished) return;
-    const deadline = Date.now() + phaseSeconds(subIdx, phase === "me_memorize") * 1000;
+    const startedAt = timingRef.current?.startedAt ?? Date.now();
+    const seconds = phaseSeconds(subIdx, phase === "me_memorize");
     const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      const remaining = secondsLeft(startedAt, seconds);
       setTimeLeft(remaining);
       if (remaining > 0) return;
       clearInterval(interval);
@@ -300,13 +354,13 @@ export default function IstPage() {
     const next = { ...answersRef.current, [key]: list };
     answersRef.current = next;
     setAnswers(next);
-    saveProgress(user.uid, subIdx, next);
+    saveProgress(user.uid, subIdx, next, timingRef.current);
   }
 
   function startTest() {
     if (!user) return;
     // Simpan segera agar test-hub mendeteksi tes ini sedang dikerjakan.
-    saveProgress(user.uid, 0, answersRef.current);
+    saveProgress(user.uid, 0, answersRef.current, null);
     beginSubtest(0);
   }
 

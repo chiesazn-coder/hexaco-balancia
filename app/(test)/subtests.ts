@@ -66,7 +66,7 @@ export const SUB_TESTS: SubTest[] = [
   {
     id: "ist",
     label: "Tes Psikotes 3",
-    description: "Tes inteligensi, 5 bagian.",
+    description: "Tes inteligensi, 9 bagian.",
     href: "/test/ist",
     isCompleted: async (uid) => {
       // Rules istSessions belum tentu terpasang: gagal baca dianggap belum selesai.
