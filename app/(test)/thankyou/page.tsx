@@ -11,16 +11,18 @@ import { SUB_TESTS } from "../subtests";
 const KRAEPELIN_ID = "kraepelin";
 
 // Tes yang ditambahkan belakangan. Diwajibkan bagi semua kandidat, kecuali masa tenggang di bawah berlaku.
-const LATE_ADDED_TEST_IDS = ["ist", "papi"];
+const LATE_ADDED_TEST_IDS = ["ist", "papi", "hexaco"];
 
 // Peluncuran tiap tes yang ditambahkan belakangan (Asia/Jakarta). Masa tenggang untuk tes X hanya berlaku
 // bagi kandidat yang men-submit Kraepelin SEBELUM peluncuran tes X (mereka selesai sebelum tes itu ada);
 // submit pada/setelah waktu itu tetap harus menyelesaikan tes X.
 const IST_LAUNCH_MS = Date.parse("2026-09-21T00:00:00+07:00");
 const PAPI_LAUNCH_MS = Date.parse("2026-09-22T00:00:00+07:00");
+// Urutan tes diubah (IST, PAPI, Kraepelin) dan HEXACO disembunyikan dari hub.
+const REORDER_LAUNCH_MS = Date.parse("2026-09-24T00:00:00+07:00");
 
 // Cutoff per id tes yang ditambahkan belakangan. Harus sejajar dengan LATE_ADDED_TEST_IDS.
-const LATE_ADDED_LAUNCH_MS: Record<string, number> = { ist: IST_LAUNCH_MS, papi: PAPI_LAUNCH_MS };
+const LATE_ADDED_LAUNCH_MS: Record<string, number> = { ist: IST_LAUNCH_MS, papi: PAPI_LAUNCH_MS, hexaco: REORDER_LAUNCH_MS };
 
 // Waktu submit (ms) dari dokumen kraepelinSessions, atau null bila tidak ada / tidak terbaca.
 function getSubmittedMs(data: { submittedAt?: { toMillis?: () => number } } | undefined): number | null {
@@ -28,12 +30,12 @@ function getSubmittedMs(data: { submittedAt?: { toMillis?: () => number } } | un
   return typeof submittedAt?.toMillis === "function" ? submittedAt.toMillis() : null;
 }
 
-// completion sejajar dengan SUB_TESTS. Tes yang ditambahkan belakangan dibebaskan hanya bila Kraepelin
-// disubmit sebelum peluncuran TES ITU SENDIRI (per tes, bukan satu cutoff global); tes lain (HEXACO,
-// Kraepelin) selalu wajib.
+// completion sejajar dengan SUB_TESTS. Tes tersembunyi (hidden) tidak wajib. Tes yang ditambahkan belakangan
+// dibebaskan hanya bila Kraepelin disubmit sebelum peluncuran TES ITU SENDIRI (per tes, bukan satu cutoff
+// global); tes lain (Kraepelin) selalu wajib.
 function canShowThankYou(completion: boolean[], kraepelinSubmittedMs: number | null): boolean {
   return SUB_TESTS.every((subTest, index) => {
-    if (completion[index]) return true;
+    if (completion[index] || subTest.hidden) return true;
     if (!LATE_ADDED_TEST_IDS.includes(subTest.id)) return false;
     const launchMs = LATE_ADDED_LAUNCH_MS[subTest.id];
     return kraepelinSubmittedMs !== null && kraepelinSubmittedMs < launchMs;

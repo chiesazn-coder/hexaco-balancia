@@ -5,7 +5,7 @@ import { CheckIcon } from "@heroicons/react/24/solid";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { SUB_TESTS, SubTestStatus, getInProgressTest, getStatuses, loadCompletion } from "../subtests";
+import { VISIBLE_SUB_TESTS, SubTestStatus, getInProgressTest, getStatuses, loadCompletion } from "../subtests";
 
 // Status "available" sengaja tanpa label.
 const statusLabels: Partial<Record<SubTestStatus, string>> = {
@@ -35,7 +35,7 @@ export default function TestHubPage() {
       try {
         const completion = await loadCompletion(currentUser.uid);
         if (!active) return;
-        const completedIds = SUB_TESTS.filter((_, index) => completion[index]).map((subTest) => subTest.id);
+        const completedIds = VISIBLE_SUB_TESTS.filter((_, index) => completion[index]).map((subTest) => subTest.id);
         const next = getStatuses(completion, getInProgressTest(currentUser.uid, completedIds));
         if (next.every((status) => status === "completed")) {
           router.replace("/thankyou");
@@ -77,11 +77,11 @@ export default function TestHubPage() {
     <main className="mx-auto max-w-2xl px-5 py-10 sm:py-14">
       <div className="rounded-3xl bg-white p-7 shadow-[0_18px_60px_rgba(6,59,130,.09)] sm:p-12">
         <h1 className="text-4xl font-extrabold tracking-tight text-primary">Rangkaian Psikotes</h1>
-        <p className="mt-2 text-xs font-medium text-slate-500">{completedCount} dari {SUB_TESTS.length} tes selesai</p>
+        <p className="mt-2 text-xs font-medium text-slate-500">{completedCount} dari {VISIBLE_SUB_TESTS.length} tes selesai</p>
         {hasInProgress && <p className="mt-2 text-xs leading-5 text-accent">Lanjutkan tes yang sedang dikerjakan terlebih dahulu.</p>}
 
         <ol className="mt-10 flex flex-col gap-4">
-          {SUB_TESTS.map((subTest, index) => {
+          {VISIBLE_SUB_TESTS.map((subTest, index) => {
             const status = statuses[index];
             const statusLabel = statusLabels[status];
             const canOpen = status === "in_progress" || (status === "available" && !hasInProgress);

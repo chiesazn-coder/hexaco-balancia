@@ -12,6 +12,8 @@ export interface SubTest {
   // Firestore hanya menyimpan sesi yang sudah selesai, jadi "sedang dikerjakan" hanya bisa dideteksi
   // dari cadangan jawaban di localStorage (per perangkat) milik tes tersebut.
   isInProgress: (uid: string) => boolean;
+  // Tes tersembunyi tidak tampil di hub dan tidak wajib diselesaikan (halaman tesnya tetap ada).
+  hidden?: boolean;
 }
 
 function readStorage(key: string): string | null {
@@ -26,20 +28,42 @@ function readStorage(key: string): string | null {
 // Untuk menambah tes baru, cukup tambahkan satu entri di sini.
 export const SUB_TESTS: SubTest[] = [
   {
-    id: "hexaco",
+    id: "ist",
     label: "Tes Psikotes 1",
-    description: "Inventori kepribadian, 100 pernyataan.",
-    href: "/test/hexaco",
+    description: "Tes inteligensi, 9 bagian.",
+    href: "/test/ist",
     isCompleted: async (uid) => {
-      const snapshot = await getDoc(doc(db, "hexacoCandidates", uid));
-      return snapshot.exists() && snapshot.data().hasSubmitted === true;
+      // Rules istSessions belum tentu terpasang: gagal baca dianggap belum selesai.
+      try {
+        const snapshot = await getDoc(doc(db, "istSessions", uid));
+        return snapshot.exists();
+      } catch {
+        return false;
+      }
     },
-    // Cadangan jawaban dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
-    isInProgress: (uid) => readStorage(`hexacoResponses:${uid}`) !== null,
+    // Cadangan dibuat saat "Mulai Tes" ditekan dan dihapus saat submit berhasil.
+    isInProgress: (uid) => readStorage(`istProgress:${uid}`) !== null,
+  },
+  {
+    id: "papi",
+    label: "Tes Psikotes 2",
+    description: "Tes kepribadian, 90 pernyataan.",
+    href: "/test/papi",
+    isCompleted: async (uid) => {
+      // Rules papiSessions belum tentu terpasang: gagal baca dianggap belum selesai.
+      try {
+        const snapshot = await getDoc(doc(db, "papiSessions", uid));
+        return snapshot.exists();
+      } catch {
+        return false;
+      }
+    },
+    // Cadangan dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
+    isInProgress: (uid) => readStorage(`papiProgress:${uid}`) !== null,
   },
   {
     id: "kraepelin",
-    label: "Tes Psikotes 2",
+    label: "Tes Psikotes 3",
     description: "Tes ketelitian dan ketahanan kerja.",
     href: "/test/kraepelin",
     isCompleted: async (uid) => {
@@ -64,54 +88,37 @@ export const SUB_TESTS: SubTest[] = [
     },
   },
   {
-    id: "ist",
-    label: "Tes Psikotes 3",
-    description: "Tes inteligensi, 9 bagian.",
-    href: "/test/ist",
-    isCompleted: async (uid) => {
-      // Rules istSessions belum tentu terpasang: gagal baca dianggap belum selesai.
-      try {
-        const snapshot = await getDoc(doc(db, "istSessions", uid));
-        return snapshot.exists();
-      } catch {
-        return false;
-      }
-    },
-    // Cadangan dibuat saat "Mulai Tes" ditekan dan dihapus saat submit berhasil.
-    isInProgress: (uid) => readStorage(`istProgress:${uid}`) !== null,
-  },
-  {
-    id: "papi",
+    id: "hexaco",
     label: "Tes Psikotes 4",
-    description: "Tes kepribadian, 90 pernyataan.",
-    href: "/test/papi",
+    description: "Inventori kepribadian, 100 pernyataan.",
+    href: "/test/hexaco",
+    hidden: true,
     isCompleted: async (uid) => {
-      // Rules papiSessions belum tentu terpasang: gagal baca dianggap belum selesai.
-      try {
-        const snapshot = await getDoc(doc(db, "papiSessions", uid));
-        return snapshot.exists();
-      } catch {
-        return false;
-      }
+      const snapshot = await getDoc(doc(db, "hexacoCandidates", uid));
+      return snapshot.exists() && snapshot.data().hasSubmitted === true;
     },
-    // Cadangan dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
-    isInProgress: (uid) => readStorage(`papiProgress:${uid}`) !== null,
+    // Cadangan jawaban dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
+    isInProgress: (uid) => readStorage(`hexacoResponses:${uid}`) !== null,
   },
 ];
 
-// Hasil sejajar dengan SUB_TESTS. Error dari tes mana pun (selain yang menanganinya sendiri) dilempar ke pemanggil.
+// Tes yang tampil di hub. Tes tersembunyi juga dikecualikan dari status hub, agar cadangan localStorage-nya
+// tidak membuat hub menganggap ada tes yang sedang dikerjakan.
+export const VISIBLE_SUB_TESTS: SubTest[] = SUB_TESTS.filter((subTest) => !subTest.hidden);
+
+// Hasil sejajar dengan VISIBLE_SUB_TESTS. Error dari tes mana pun (selain yang menanganinya sendiri) dilempar ke pemanggil.
 export function loadCompletion(uid: string): Promise<boolean[]> {
-  return Promise.all(SUB_TESTS.map((subTest) => subTest.isCompleted(uid)));
+  return Promise.all(VISIBLE_SUB_TESTS.map((subTest) => subTest.isCompleted(uid)));
 }
 
 // Mengembalikan id tes (mis. "hexaco") yang sedang dikerjakan, atau null. Tes yang sudah selesai
 // (completedIds) dilewati agar cadangan localStorage yang basi tidak dianggap sedang dikerjakan.
 export function getInProgressTest(uid: string, completedIds: readonly string[] = []): string | null {
-  const active = SUB_TESTS.find((subTest) => !completedIds.includes(subTest.id) && subTest.isInProgress(uid));
+  const active = VISIBLE_SUB_TESTS.find((subTest) => !completedIds.includes(subTest.id) && subTest.isInProgress(uid));
   return active?.id ?? null;
 }
 
 // Selesai = "completed"; tes yang sedang dikerjakan = "in_progress"; sisanya "available".
 export function getStatuses(completion: boolean[], inProgressId: string | null): SubTestStatus[] {
-  return completion.map((done, index) => (done ? "completed" : SUB_TESTS[index].id === inProgressId ? "in_progress" : "available"));
+  return completion.map((done, index) => (done ? "completed" : VISIBLE_SUB_TESTS[index].id === inProgressId ? "in_progress" : "available"));
 }
