@@ -14,7 +14,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "HEXACO Personality Inventory | PT Balancia",
+  title: "Asesmen PT Balancia",
   description: "Asesmen kepribadian kandidat PT Balancia.",
 };
 
