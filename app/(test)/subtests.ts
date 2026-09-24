@@ -62,8 +62,25 @@ export const SUB_TESTS: SubTest[] = [
     isInProgress: (uid) => readStorage(`papiProgress:${uid}`) !== null,
   },
   {
-    id: "kraepelin",
+    id: "disc",
     label: "Tes Psikotes 3",
+    description: "Tes kepribadian, 24 kelompok pernyataan.",
+    href: "/test/disc",
+    isCompleted: async (uid) => {
+      // Rules discSessions belum tentu terpasang: gagal baca dianggap belum selesai.
+      try {
+        const snapshot = await getDoc(doc(db, "discSessions", uid));
+        return snapshot.exists();
+      } catch {
+        return false;
+      }
+    },
+    // Cadangan dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
+    isInProgress: (uid) => readStorage(`discProgress:${uid}`) !== null,
+  },
+  {
+    id: "kraepelin",
+    label: "Tes Psikotes 4",
     description: "Tes ketelitian dan ketahanan kerja.",
     href: "/test/kraepelin",
     isCompleted: async (uid) => {

@@ -11,7 +11,7 @@ import { SUB_TESTS } from "../subtests";
 const KRAEPELIN_ID = "kraepelin";
 
 // Tes yang ditambahkan belakangan. Diwajibkan bagi semua kandidat, kecuali masa tenggang di bawah berlaku.
-const LATE_ADDED_TEST_IDS = ["ist", "papi", "hexaco"];
+const LATE_ADDED_TEST_IDS = ["ist", "papi", "hexaco", "disc"];
 
 // Peluncuran tiap tes yang ditambahkan belakangan (Asia/Jakarta). Masa tenggang untuk tes X hanya berlaku
 // bagi kandidat yang men-submit Kraepelin SEBELUM peluncuran tes X (mereka selesai sebelum tes itu ada);
@@ -20,9 +20,10 @@ const IST_LAUNCH_MS = Date.parse("2026-09-21T00:00:00+07:00");
 const PAPI_LAUNCH_MS = Date.parse("2026-09-22T00:00:00+07:00");
 // Urutan tes diubah (IST, PAPI, Kraepelin) dan HEXACO disembunyikan dari hub.
 const REORDER_LAUNCH_MS = Date.parse("2026-09-24T00:00:00+07:00");
+const DISC_LAUNCH_MS = Date.parse("2026-09-25T00:00:00+07:00");
 
 // Cutoff per id tes yang ditambahkan belakangan. Harus sejajar dengan LATE_ADDED_TEST_IDS.
-const LATE_ADDED_LAUNCH_MS: Record<string, number> = { ist: IST_LAUNCH_MS, papi: PAPI_LAUNCH_MS, hexaco: REORDER_LAUNCH_MS };
+const LATE_ADDED_LAUNCH_MS: Record<string, number> = { ist: IST_LAUNCH_MS, papi: PAPI_LAUNCH_MS, hexaco: REORDER_LAUNCH_MS, disc: DISC_LAUNCH_MS };
 
 // Waktu submit (ms) dari dokumen kraepelinSessions, atau null bila tidak ada / tidak terbaca.
 function getSubmittedMs(data: { submittedAt?: { toMillis?: () => number } } | undefined): number | null {
