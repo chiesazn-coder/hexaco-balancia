@@ -92,9 +92,7 @@ export default function LoginPage() {
       <div className="grid w-full max-w-5xl overflow-hidden rounded-[2rem] bg-[#fbf5ee] shadow-[0_30px_80px_rgba(44,50,60,.12)] lg:grid-cols-[1.05fr_1fr]">
         <section className="hidden min-h-[700px] flex-col lg:flex">
           <div className="px-10 pb-3 pt-9">
-            <div className="inline-flex rounded-lg bg-primary px-2.5 py-1.5 shadow-md shadow-blue-950/15">
-              <Image src="/logo-balancia.png" alt="Balancia Ship Agency" width={84} height={43} priority />
-            </div>
+            <Image src="/logo-balancia.png" alt="Balancia Ship Agency" width={104} height={53} priority />
             <h2 className="mt-6 text-3xl font-bold tracking-tight text-primary">Selamat datang! <span aria-hidden="true">👋</span></h2>
             <p className="mt-2 max-w-sm text-sm font-medium leading-6 text-slate-600">Masuk untuk memulai rangkaian asesmen Anda bersama PT Balancia.</p>
           </div>
@@ -107,9 +105,7 @@ export default function LoginPage() {
         <section className="flex items-center justify-center p-3 sm:p-5">
           <div className="w-full rounded-[1.75rem] bg-white px-6 py-8 shadow-[0_12px_40px_rgba(44,50,60,.08)] sm:px-10 sm:py-10">
             <div className="mb-7 text-center">
-              <div className="mx-auto mb-5 inline-flex rounded-lg bg-primary px-2.5 py-1.5 shadow-lg shadow-blue-950/15 lg:hidden">
-                <Image src="/logo-balancia.png" alt="Balancia Ship Agency" width={80} height={41} />
-              </div>
+              <Image src="/logo-balancia.png" alt="Balancia Ship Agency" width={100} height={51} className="mx-auto mb-5 lg:hidden" />
               <h1 className="text-2xl font-bold tracking-tight text-primary">{isRegistering ? "Buat akun Anda" : "Asesmen PT Balancia"}</h1>
               <p className="mt-1.5 text-sm text-slate-500">{isRegistering ? "Isi data di bawah untuk mendaftar." : "Silakan masuk untuk melanjutkan."}</p>
             </div>
