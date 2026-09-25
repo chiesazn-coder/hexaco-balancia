@@ -9,6 +9,10 @@ import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Mascot from "../../Mascot";
+import { subTestLabel } from "../../subtests";
+
+const PAGE_TITLE = subTestLabel("ist");
 
 type Phase = "intro" | "countdown" | "subtest" | "me_memorize" | "result";
 
@@ -408,20 +412,23 @@ export default function IstPage() {
   if (phase === "intro") {
     return (
       <main className="grid min-h-[calc(100vh-65px)] place-items-center px-5 py-10">
-        <section className="w-full max-w-md text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Tes IST</h1>
-          <div className="mt-6 space-y-3 rounded-3xl bg-white p-7 text-left text-sm leading-6 text-slate-700 shadow-[0_18px_60px_rgba(6,59,130,.09)] sm:p-8">
-            <p>Terdiri dari {SUBTEST_COUNT} bagian tes. Setiap bagian memiliki waktu yang berbeda. Kerjakan setiap soal sesuai petunjuk yang diberikan.</p>
-            <ul className="space-y-1 rounded-xl bg-blue-50 px-4 py-3 text-xs font-semibold text-primary">
-              {IST_SUBTESTS.map((subtest) => {
-                const memorize = subtest.kind === "choice" ? subtest.memorizeSeconds ?? 0 : 0;
-                const minutes = (subtest.durationSeconds + memorize) / 60;
-                return <li key={subtest.key}>{subtest.name} — {minutes} menit{memorize ? ` (${memorize / 60} menit hafal + ${subtest.durationSeconds / 60} menit soal)` : ""}</li>;
-              })}
-            </ul>
-          </div>
-          <button type="button" onClick={startTest} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100">Mulai Tes</button>
-        </section>
+        <div className="flex w-full max-w-4xl flex-col items-center gap-8 lg:flex-row lg:justify-center lg:gap-14">
+          <Mascot id="ist" className="w-44 sm:w-52 lg:w-80" />
+          <section className="w-full max-w-md text-center lg:text-left">
+            <h1 className="text-3xl font-bold tracking-tight text-primary">{PAGE_TITLE}</h1>
+            <div className="mt-6 space-y-3 rounded-3xl bg-white p-7 text-left text-sm leading-6 text-slate-700 shadow-[0_18px_60px_rgba(6,59,130,.09)] sm:p-8">
+              <p>Terdiri dari {SUBTEST_COUNT} bagian tes. Setiap bagian memiliki waktu yang berbeda. Kerjakan setiap soal sesuai petunjuk yang diberikan.</p>
+              <ul className="space-y-1 rounded-xl bg-blue-50 px-4 py-3 text-xs font-semibold text-primary">
+                {IST_SUBTESTS.map((subtest) => {
+                  const memorize = subtest.kind === "choice" ? subtest.memorizeSeconds ?? 0 : 0;
+                  const minutes = (subtest.durationSeconds + memorize) / 60;
+                  return <li key={subtest.key}>{subtest.name} — {minutes} menit{memorize ? ` (${memorize / 60} menit hafal + ${subtest.durationSeconds / 60} menit soal)` : ""}</li>;
+                })}
+              </ul>
+            </div>
+            <button type="button" onClick={startTest} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100">Mulai Tes</button>
+          </section>
+        </div>
       </main>
     );
   }

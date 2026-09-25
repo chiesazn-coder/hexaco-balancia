@@ -8,6 +8,10 @@ import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import Mascot from "../../Mascot";
+import { subTestLabel } from "../../subtests";
+
+const PAGE_TITLE = subTestLabel("kraepelin");
 
 type State = "intro" | "countdown" | "test" | "result";
 
@@ -279,17 +283,20 @@ export default function KraepelinPage() {
   if (phase === "intro") {
     return (
       <main className="grid min-h-[calc(100vh-65px)] place-items-center px-5 py-10">
-        <section className="w-full max-w-md text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Tes Penjumlahan</h1>
-          <div className="mt-6 space-y-3 rounded-3xl bg-white p-7 text-left text-sm leading-6 text-slate-700 shadow-[0_18px_60px_rgba(6,59,130,.09)] sm:p-8">
-            <p>Kamu akan melihat deretan angka dalam kolom.</p>
-            <p>Jumlahkan dua angka yang berdekatan, lalu tulis digit terakhir dari hasilnya.</p>
-            <p className="rounded-xl bg-blue-50 px-4 py-2.5 font-semibold text-primary">Contoh: 7 + 6 = 13 → tulis 3</p>
-            <p>Setiap kolom berlangsung selama 15 detik.</p>
-            <p>Kerjakan dari atas ke bawah, secepat mungkin.</p>
-          </div>
-          <button type="button" onClick={() => setPhase("countdown")} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100">Mulai tes</button>
-        </section>
+        <div className="flex w-full max-w-4xl flex-col items-center gap-8 lg:flex-row lg:justify-center lg:gap-14">
+          <Mascot id="kraepelin" className="w-44 sm:w-52 lg:w-80" />
+          <section className="w-full max-w-md text-center lg:text-left">
+            <h1 className="text-3xl font-bold tracking-tight text-primary">{PAGE_TITLE}</h1>
+            <div className="mt-6 space-y-3 rounded-3xl bg-white p-7 text-left text-sm leading-6 text-slate-700 shadow-[0_18px_60px_rgba(6,59,130,.09)] sm:p-8">
+              <p>Kamu akan melihat deretan angka dalam kolom.</p>
+              <p>Jumlahkan dua angka yang berdekatan, lalu tulis digit terakhir dari hasilnya.</p>
+              <p className="rounded-xl bg-blue-50 px-4 py-2.5 font-semibold text-primary">Contoh: 7 + 6 = 13 → tulis 3</p>
+              <p>Setiap kolom berlangsung selama 15 detik.</p>
+              <p>Kerjakan dari atas ke bawah, secepat mungkin.</p>
+            </div>
+            <button type="button" onClick={() => setPhase("countdown")} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100">Mulai tes</button>
+          </section>
+        </div>
       </main>
     );
   }

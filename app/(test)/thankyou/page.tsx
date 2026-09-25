@@ -1,11 +1,11 @@
 "use client";
 
 import { auth, db } from "@/lib/firebase";
-import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import Mascot from "../Mascot";
 import { SUB_TESTS } from "../subtests";
 
 const KRAEPELIN_ID = "kraepelin";
@@ -103,7 +103,7 @@ export default function ThankYouPage() {
   return (
     <main className="grid min-h-[calc(100vh-65px)] place-items-center bg-[#f0ede8] px-5 py-12">
       <section className="w-full max-w-lg rounded-3xl bg-white p-8 text-center shadow-[0_20px_60px_rgba(44,50,60,.10)] sm:p-12">
-        <CheckCircleIcon className="mx-auto h-20 w-20 text-emerald-500" aria-hidden="true" />
+        <Mascot id="thankyou" className="mx-auto w-44 sm:w-52" />
         <h1 className="mt-6 text-4xl font-bold tracking-tight text-primary">Terima Kasih!</h1>
         <p className="mt-5 leading-7 text-slate-600">Jawaban Anda telah berhasil disimpan. Tim HCGA PT Balancia akan menghubungi Anda untuk proses selanjutnya.</p>
         <p className="mt-8 text-sm text-slate-500">Anda dapat menutup halaman ini.</p>

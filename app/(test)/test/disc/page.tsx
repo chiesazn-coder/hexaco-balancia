@@ -8,6 +8,10 @@ import { Timestamp, doc, getDoc, serverTimestamp, setDoc } from "firebase/firest
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Mascot from "../../Mascot";
+import { subTestLabel } from "../../subtests";
+
+const PAGE_TITLE = subTestLabel("disc");
 
 type Phase = "intro" | "test" | "result";
 
@@ -237,17 +241,20 @@ export default function DiscPage() {
   if (phase === "intro") {
     return (
       <main className="grid min-h-[calc(100vh-65px)] place-items-center px-5 py-10">
-        <section className="w-full max-w-md text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Tes Kepribadian DISC</h1>
-          <div className="mt-6 rounded-3xl bg-white p-7 text-left text-sm leading-6 text-slate-700 shadow-[0_18px_60px_rgba(6,59,130,.09)] sm:p-8">
-            <p>
-              Setiap kelompok berisi 4 pernyataan. Pilih satu pernyataan yang PALING menggambarkan diri Anda pada kolom M, dan satu
-              pernyataan yang PALING TIDAK menggambarkan diri Anda pada kolom L. Setiap kelompok wajib diisi M dan L, dan keduanya
-              tidak boleh pada pernyataan yang sama. Tidak ada jawaban benar atau salah, dan tidak ada batas waktu.
-            </p>
-          </div>
-          <button type="button" onClick={startTest} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100">Mulai Tes</button>
-        </section>
+        <div className="flex w-full max-w-4xl flex-col items-center gap-8 lg:flex-row lg:justify-center lg:gap-14">
+          <Mascot id="disc" className="w-44 sm:w-52 lg:w-80" />
+          <section className="w-full max-w-md text-center lg:text-left">
+            <h1 className="text-3xl font-bold tracking-tight text-primary">{PAGE_TITLE}</h1>
+            <div className="mt-6 rounded-3xl bg-white p-7 text-left text-sm leading-6 text-slate-700 shadow-[0_18px_60px_rgba(6,59,130,.09)] sm:p-8">
+              <p>
+                Setiap kelompok berisi 4 pernyataan. Pilih satu pernyataan yang PALING menggambarkan diri Anda pada kolom M, dan satu
+                pernyataan yang PALING TIDAK menggambarkan diri Anda pada kolom L. Setiap kelompok wajib diisi M dan L, dan keduanya
+                tidak boleh pada pernyataan yang sama. Tidak ada jawaban benar atau salah, dan tidak ada batas waktu.
+              </p>
+            </div>
+            <button type="button" onClick={startTest} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100">Mulai Tes</button>
+          </section>
+        </div>
       </main>
     );
   }
@@ -259,7 +266,7 @@ export default function DiscPage() {
     <main className="pb-28">
       <div className="mx-auto max-w-2xl px-4 py-6">
         <div className="rounded-2xl bg-white p-5 shadow-sm">
-          <h1 className="text-lg font-bold text-primary">Tes Kepribadian DISC</h1>
+          <h1 className="text-lg font-bold text-primary">{PAGE_TITLE}</h1>
           <p className="mt-1 text-xs leading-5 text-slate-500">
             Pada setiap kelompok, pilih satu pernyataan pada kolom <span className="font-bold text-primary">M</span> (paling menggambarkan diri Anda) dan satu pada kolom <span className="font-bold text-accent">L</span> (paling tidak menggambarkan diri Anda).
           </p>

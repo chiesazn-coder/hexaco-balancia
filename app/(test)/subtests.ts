@@ -123,6 +123,11 @@ export const SUB_TESTS: SubTest[] = [
 // tidak membuat hub menganggap ada tes yang sedang dikerjakan.
 export const VISIBLE_SUB_TESTS: SubTest[] = SUB_TESTS.filter((subTest) => !subTest.hidden);
 
+// Judul tes yang ditampilkan ke peserta (mis. "Tes Psikotes 3"); jenis tes sengaja tidak disebutkan.
+export function subTestLabel(id: string): string {
+  return SUB_TESTS.find((subTest) => subTest.id === id)?.label ?? "Tes Psikotes";
+}
+
 // Hasil sejajar dengan VISIBLE_SUB_TESTS. Error dari tes mana pun (selain yang menanganinya sendiri) dilempar ke pemanggil.
 export function loadCompletion(uid: string): Promise<boolean[]> {
   return Promise.all(VISIBLE_SUB_TESTS.map((subTest) => subTest.isCompleted(uid)));
