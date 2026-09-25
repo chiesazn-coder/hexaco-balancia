@@ -6,6 +6,7 @@ const MASCOTS = {
   papi: { file: 2, alt: "Karakter sedang berpikir" },
   disc: { file: 3, alt: "Karakter mempersilakan" },
   kraepelin: { file: 5, alt: "Karakter bersedekap dengan percaya diri" },
+  "love-language": { file: 1, alt: "Karakter mengacungkan jempol" },
   thankyou: { file: 1, alt: "Karakter mengacungkan jempol" },
 } as const;
 

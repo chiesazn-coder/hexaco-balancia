@@ -79,8 +79,25 @@ export const SUB_TESTS: SubTest[] = [
     isInProgress: (uid) => readStorage(`discProgress:${uid}`) !== null,
   },
   {
-    id: "kraepelin",
+    id: "love-language",
     label: "Tes Psikotes 4",
+    description: "Tes preferensi, 30 pasang pernyataan.",
+    href: "/test/love-language",
+    isCompleted: async (uid) => {
+      // Rules loveLanguageSessions belum tentu terpasang: gagal baca dianggap belum selesai.
+      try {
+        const snapshot = await getDoc(doc(db, "loveLanguageSessions", uid));
+        return snapshot.exists();
+      } catch {
+        return false;
+      }
+    },
+    // Cadangan dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
+    isInProgress: (uid) => readStorage(`loveLanguageProgress:${uid}`) !== null,
+  },
+  {
+    id: "kraepelin",
+    label: "Tes Psikotes 5",
     description: "Tes ketelitian dan ketahanan kerja.",
     href: "/test/kraepelin",
     isCompleted: async (uid) => {
