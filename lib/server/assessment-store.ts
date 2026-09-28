@@ -71,11 +71,13 @@ export async function saveDraft(db: Firestore, uid: string, test: TestId, body: 
   }
   const ref = progressRef(db, uid, test);
   return db.runTransaction(async tx => {
+    // Two reads per backup (Spark quota). Profile completeness is enforced on submit; HEXACO also
+    // needs the profile because legacy results use random document IDs.
     const [current, final, candidate] = await Promise.all([
-      tx.get(ref), tx.get(db.doc(`${COLLECTIONS[test]}/${uid}`)), tx.get(db.doc(`hexacoCandidates/${uid}`)),
+      tx.get(ref), tx.get(db.doc(`${COLLECTIONS[test]}/${uid}`)),
+      test === "hexaco" ? tx.get(db.doc(`hexacoCandidates/${uid}`)) : Promise.resolve(null),
     ]);
-    if (!candidate.exists) throw new HttpError(409, "Lengkapi profil sebelum memulai.");
-    if (final.exists || (test === "hexaco" && candidate.data()?.hasSubmitted === true)) throw new HttpError(409, "Tes ini sudah dikirim. Muat ulang halaman.");
+    if (final.exists || candidate?.data()?.hasSubmitted === true) throw new HttpError(409, "Tes ini sudah dikirim. Muat ulang halaman.");
     const revision = current.data()?.revision ?? 0;
     const payload = JSON.stringify(body.data);
     // A retried backup with an identical payload is safe even if its response was lost.

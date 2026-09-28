@@ -49,9 +49,12 @@ export async function assessmentRequest(uid: string, test: TestId, action: "prog
   } finally { clearTimeout(timeout); }
 }
 
+// Firestore project is on the Spark plan (20k writes/day shared with other apps). Answers are
+// persisted to localStorage immediately; the server copy only needs to be recent, so batch it.
+const SERVER_BACKUP_INTERVAL_MS = 15000;
 function queue(entry: Entry) {
   if (entry.stopped || entry.timer || entry.running) return;
-  entry.timer = setTimeout(() => { entry.timer = undefined; void flush(entry); }, 1500);
+  entry.timer = setTimeout(() => { entry.timer = undefined; void flush(entry); }, SERVER_BACKUP_INTERVAL_MS);
 }
 async function flush(entry: Entry): Promise<void> {
   if (entry.running) return entry.running;
@@ -134,7 +137,10 @@ export async function submitAnswers(uid: string, test: TestId, answers: unknown,
 export function backupStatus(uid: string, test: TestId) {
   const e = entries.get(backupKey(uid, test));
   if (!e || (e.stopped && !e.warning)) return "";
-  return e.warning || (!e.localOk ? "Cadangan perangkat tidak tersedia. Pastikan cadangan server tersimpan sebelum meninggalkan halaman." : e.dirty ? "Menyimpan cadangan jawaban ke server…" : "");
+  if (e.warning) return e.warning;
+  // A pending server backup is normal while answering; it only matters when the device copy failed.
+  if (!e.localOk) return e.dirty ? "Cadangan perangkat tidak tersedia. Menyimpan cadangan jawaban ke server…" : "Cadangan perangkat tidak tersedia. Jangan menutup halaman ini.";
+  return "";
 }
 export function subscribeBackup(callback: () => void) {
   window.addEventListener(EVENT, callback);
