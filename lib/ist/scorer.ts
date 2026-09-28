@@ -1,4 +1,5 @@
-import { AN_QUESTIONS, ME_QUESTIONS, RA_QUESTIONS, SE_QUESTIONS, WA_QUESTIONS, ZR_QUESTIONS } from "./questions";
+import "server-only";
+import { IST_KEY } from "../server/ist-key";
 
 // Jawaban per bagian. Pilihan ganda: 'a'–'e'. ZR: angka diketik sebagai string. GE: jawaban bebas (teks).
 // RA: angka diketik sebagai string. FA/WU: pilihan 'a'–'e'. null = belum dijawab.
@@ -47,25 +48,25 @@ const isEmpty = (value: string | null | undefined) => value === null || value ==
 // GE/FA/WU tidak punya kunci jawaban dan tidak masuk ke scores sama sekali (lihat IstScores); hanya
 // dihitung jumlah belum terjawabnya (unanswered) di sini.
 export function scoreIst(answers: IstAnswers): { scores: IstScores; unanswered: IstUnansweredCounts } {
-  const choice = (questions: { answer: string }[], given: (string | null)[]) => ({
-    score: questions.filter((question, i) => given[i] === question.answer).length,
+  const choice = (questions: readonly string[], given: (string | null)[]) => ({
+    score: questions.filter((question, i) => given[i] === question).length,
     unanswered: questions.filter((_, i) => isEmpty(given[i])).length,
   });
   // RA & ZR: jawaban angka diketik sebagai string.
-  const number = (questions: { answer: number }[], given: (string | null)[]) => ({
-    score: questions.filter((question, i) => !isEmpty(given[i]) && parseInt(given[i] as string, 10) === question.answer).length,
+  const number = (questions: readonly number[], given: (string | null)[]) => ({
+    score: questions.filter((question, i) => !isEmpty(given[i]) && Number(given[i]) === question).length,
     unanswered: questions.filter((_, i) => isEmpty(given[i])).length,
   });
   const unscored = (questionCount: number, given: (string | null)[]) => ({
     unanswered: Array.from({ length: questionCount }, (_, i) => given[i]).filter((value) => isEmpty(value)).length,
   });
 
-  const se = choice(SE_QUESTIONS, answers.se);
-  const wa = choice(WA_QUESTIONS, answers.wa);
-  const an = choice(AN_QUESTIONS, answers.an);
-  const ra = number(RA_QUESTIONS, answers.ra);
-  const zr = number(ZR_QUESTIONS, answers.zr);
-  const me = choice(ME_QUESTIONS, answers.me);
+  const se = choice(IST_KEY.se, answers.se);
+  const wa = choice(IST_KEY.wa, answers.wa);
+  const an = choice(IST_KEY.an, answers.an);
+  const ra = number(IST_KEY.ra, answers.ra);
+  const zr = number(IST_KEY.zr, answers.zr);
+  const me = choice(IST_KEY.me, answers.me);
   const ge = unscored(answers.ge.length, answers.ge);
   const fa = unscored(answers.fa.length, answers.fa);
   const wu = unscored(answers.wu.length, answers.wu);

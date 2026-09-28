@@ -2,11 +2,12 @@
 
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDocFromServer as getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { isCompletedSession } from "@/lib/assessment/validation";
 import Mascot from "../Mascot";
-import { SUB_TESTS } from "../subtests";
+import { VISIBLE_SUB_TESTS as SUB_TESTS } from "../subtests";
 
 const KRAEPELIN_ID = "kraepelin";
 
@@ -61,18 +62,15 @@ export default function ThankYouPage() {
 
       try {
         // Satu kali baca kraepelinSessions dipakai untuk status selesai sekaligus tanggal submit (masa tenggang).
-        // Gagal membaca -> null: fail open (tampilkan halaman ini) agar error sementara tidak memblokir kandidat.
         const [kraepelin, otherCompletion] = await Promise.all([
-          getDoc(doc(db, "kraepelinSessions", currentUser.uid)).catch((readError) => {
-            console.error(readError);
-            return null;
-          }),
+          getDoc(doc(db, "kraepelinSessions", currentUser.uid)),
           Promise.all(SUB_TESTS.map((subTest) => (subTest.id === KRAEPELIN_ID ? Promise.resolve(false) : subTest.isCompleted(currentUser.uid)))),
         ]);
         if (!active) return;
+        if (kraepelin.exists() && !isCompletedSession("kraepelin", kraepelin.data(), currentUser.uid)) throw new Error("Hasil Kraepelin perlu diperiksa tim HCGA.");
         const completion = otherCompletion.map((done, index) => (SUB_TESTS[index].id === KRAEPELIN_ID ? !!kraepelin?.exists() : done));
         const kraepelinSubmittedMs = kraepelin?.exists() ? getSubmittedMs(kraepelin.data()) : null;
-        const allDone = kraepelin === null || canShowThankYou(completion, kraepelinSubmittedMs);
+        const allDone = canShowThankYou(completion, kraepelinSubmittedMs);
         if (!allDone) {
           router.replace("/test-hub");
           return;
@@ -96,7 +94,7 @@ export default function ThankYouPage() {
   if (!isVerified) {
     return (
       <main className="grid min-h-[calc(100vh-65px)] place-items-center px-5">
-        {error ? <p role="alert" className="max-w-md text-center text-sm text-red-700">{error}</p> : <p className="text-sm font-medium text-slate-500">Memeriksa status tes...</p>}
+        {error ? <div className="max-w-md text-center"><p role="alert" className="text-sm text-red-700">{error}</p><button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-xl bg-primary px-5 py-3 font-semibold text-white">Coba Lagi</button></div> : <p className="text-sm font-medium text-slate-500">Memeriksa status tes...</p>}
       </main>
     );
   }

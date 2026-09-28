@@ -1,9 +1,11 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { isProfileComplete } from "@/lib/assessment/profile";
+import { auth, db } from "@/lib/firebase";
 import { ArrowRightIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { onAuthStateChanged } from "firebase/auth";
+import { doc, getDocFromServer } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { VISIBLE_SUB_TESTS, SubTestStatus, getInProgressTest, getStatuses, loadCompletion } from "../subtests";
@@ -26,6 +28,13 @@ export default function TestHubPage() {
       }
 
       try {
+        // Sesi login tersimpan di browser, jadi hub bisa dibuka tanpa melewati login/profil.
+        const profile = await getDocFromServer(doc(db, "hexacoCandidates", currentUser.uid));
+        if (!active) return;
+        if (!isProfileComplete(profile.data())) {
+          router.replace("/profile");
+          return;
+        }
         const completion = await loadCompletion(currentUser.uid);
         if (!active) return;
         const completedIds = VISIBLE_SUB_TESTS.filter((_, index) => completion[index]).map((subTest) => subTest.id);

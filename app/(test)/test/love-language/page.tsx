@@ -1,11 +1,15 @@
 "use client";
 
+import { readBackup, restoreBackup, saveBackup, submitAnswers } from "@/lib/assessment/client";
+import { isCompletedSession } from "@/lib/assessment/validation";
+import { isProfileComplete } from "@/lib/assessment/profile";
+
 import { auth, db } from "@/lib/firebase";
 import { LOVE_LANGUAGE_ITEMS, LOVE_LANGUAGE_TOTAL_ITEMS } from "@/lib/love-language/love-language-questions";
 import type { LoveLanguageLetter } from "@/lib/types/love-language";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { Timestamp, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDocFromServer as getDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,7 +33,7 @@ const isPick = (value: unknown): value is Pick => value === null || value === 0 
 // startedAt = waktu kandidat menekan "Mulai Tes" (ms), null bila tidak ada / tidak valid.
 function readProgress(uid: string): { picks: Pick[]; startedAt: number | null } {
   try {
-    const raw = localStorage.getItem(storageKey(uid));
+    const raw = readBackup(uid, "love-language");
     if (!raw) return { picks: emptyPicks(), startedAt: null };
     const parsed = JSON.parse(raw) as { answers?: unknown; startedAt?: unknown };
     if (Array.isArray(parsed.answers) && parsed.answers.length === TOTAL && parsed.answers.every(isPick)) {
@@ -49,7 +53,7 @@ function readProgress(uid: string): { picks: Pick[]; startedAt: number | null } 
 
 function saveProgress(uid: string, picks: Pick[], startedAt: number | null) {
   try {
-    localStorage.setItem(storageKey(uid), JSON.stringify({ answers: picks, startedAt }));
+    saveBackup(uid, "love-language", { answers: picks, startedAt });
   } catch {
     // Cadangan lokal bersifat opsional.
   }
@@ -75,14 +79,7 @@ export default function LoveLanguagePage() {
     try {
       // Hanya dipanggil bila semua nomor terjawab; yang disimpan adalah huruf kategori pernyataan yang dipilih.
       const answers: LoveLanguageLetter[] = finalPicks.map((pick, index) => LOVE_LANGUAGE_ITEMS[index].options[pick as 0 | 1].letter);
-      await setDoc(doc(db, "loveLanguageSessions", uid), {
-        candidateId: uid,
-        answers,
-        // Waktu mulai dicatat di perangkat saat "Mulai Tes" ditekan; bila hilang, pakai waktu server saat kirim.
-        startedAt: startedAtRef.current !== null ? Timestamp.fromMillis(startedAtRef.current) : serverTimestamp(),
-        submittedAt: serverTimestamp(),
-        hasSubmitted: true,
-      });
+      await submitAnswers(uid, "love-language", answers, startedAtRef.current);
       try {
         localStorage.removeItem(storageKey(uid));
       } catch {
@@ -91,7 +88,7 @@ export default function LoveLanguagePage() {
       setPhase("result");
     } catch (caughtError) {
       console.error(caughtError);
-      setSubmitError("Jawaban gagal dikirim. Data tersimpan di perangkat ini; silakan coba kembali.");
+      setSubmitError(caughtError instanceof Error ? caughtError.message : "Penyimpanan belum dapat dikonfirmasi. Tetap di halaman ini dan coba kirim ulang.");
     } finally {
       setIsSubmitting(false);
     }
@@ -106,27 +103,23 @@ export default function LoveLanguagePage() {
       }
 
       try {
-        // Profil (nama) wajib ada. Gagal membaca tidak mengalihkan (fail open) agar error sementara tidak memblokir tes.
-        try {
           const candidate = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
           if (!active) return;
-          const nama = candidate.exists() ? candidate.data().nama : undefined;
-          if (typeof nama !== "string" || !nama.trim()) {
+          if (!isProfileComplete(candidate.data())) {
             router.replace("/profile");
             return;
           }
-        } catch (profileError) {
-          console.error(profileError);
-          if (!active) return;
-        }
 
         const session = await getDoc(doc(db, "loveLanguageSessions", currentUser.uid));
         if (!active) return;
+        if (session.exists() && !isCompletedSession("love-language", session.data(), currentUser.uid)) throw new Error("Hasil lama perlu diperiksa tim HCGA.");
         if (session.exists()) {
           router.replace("/thankyou");
           return;
         }
 
+        await restoreBackup(currentUser.uid, "love-language");
+        if (!active) return;
         const restored = readProgress(currentUser.uid);
         picksRef.current = restored.picks;
         startedAtRef.current = restored.startedAt;
@@ -136,7 +129,7 @@ export default function LoveLanguagePage() {
       } catch (caughtError) {
         console.error(caughtError);
         if (!active) return;
-        setLoadError("Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
+        setLoadError(caughtError instanceof Error ? caughtError.message : "Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
         setIsChecking(false);
       }
     });

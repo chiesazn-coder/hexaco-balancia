@@ -2,14 +2,19 @@
 
 import { auth, db } from "@/lib/firebase";
 import { GRID } from "@/lib/kraepelin/grid";
-import { KraepelinScore, scoreKraepelin } from "@/lib/kraepelin/scorer";
+import type { KraepelinScore } from "@/lib/kraepelin/scorer";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDocFromServer as getDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import Mascot from "../../Mascot";
 import { subTestLabel } from "../../subtests";
+
+import { readBackup, restoreBackup, saveBackup, submitAnswers } from "@/lib/assessment/client";
+import { isCompletedSession } from "@/lib/assessment/validation";
+import { isProfileComplete } from "@/lib/assessment/profile";
+import { advanceProgress, parseProgress, newProgress, emptyColumn, type KraepelinProgress } from "@/lib/kraepelin/progress";
 
 const PAGE_TITLE = subTestLabel("kraepelin");
 
@@ -20,37 +25,6 @@ const SLOTS = GRID[0].length - 1;
 const TIME_LIMIT = 15;
 const WARNING_AT = 5;
 const COUNTDOWN_FROM = 3;
-
-const emptyColumn = () => Array<string>(SLOTS).fill("");
-const storageKey = (uid: string) => `kraepelinProgress:${uid}`;
-
-// Hanya kolom yang sudah selesai yang dipulihkan; data rusak dibuang dan tes mulai dari kolom 1.
-function readProgress(uid: string): string[][] {
-  try {
-    const raw = localStorage.getItem(storageKey(uid));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as { colIdx?: unknown; columns?: unknown };
-    if (typeof parsed.colIdx === "number" && Array.isArray(parsed.columns)) {
-      const columns = parsed.columns.slice(0, parsed.colIdx);
-      const valid = columns.length === parsed.colIdx
-        && columns.length <= TOTAL_COLUMNS
-        && columns.every((column) => Array.isArray(column) && column.length === SLOTS && column.every((value) => typeof value === "string" && /^[0-9]?$/.test(value)));
-      if (valid) return columns as string[][];
-    }
-    localStorage.removeItem(storageKey(uid));
-  } catch {
-    // localStorage tidak tersedia atau JSON rusak: mulai dari awal.
-  }
-  return [];
-}
-
-function saveProgress(uid: string, columns: string[][]) {
-  try {
-    localStorage.setItem(storageKey(uid), JSON.stringify({ colIdx: columns.length, columns }));
-  } catch {
-    // Cadangan lokal bersifat opsional.
-  }
-}
 
 export default function KraepelinPage() {
   const router = useRouter();
@@ -68,31 +42,19 @@ export default function KraepelinPage() {
   const [submitError, setSubmitError] = useState("");
   // Salinan jawaban kolom aktif agar callback timer selalu membaca nilai terbaru.
   const currentRef = useRef<string[]>(emptyColumn());
+  const progressRef = useRef<KraepelinProgress | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const submit = useCallback(async (allColumns: string[][], uid: string) => {
     setIsSubmitting(true);
     setSubmitError("");
     try {
-      const score = scoreKraepelin(allColumns, GRID);
-      await setDoc(doc(db, "kraepelinSessions", uid), {
-        candidateId: uid,
-        // Firestore menolak array bersarang (string[][]), jadi tiap kolom dibungkus map: answers[i].values.
-        answers: allColumns.map((values) => ({ values })),
-        ...score,
-        submittedAt: serverTimestamp(),
-        hasSubmitted: true,
-      });
-      try {
-        localStorage.removeItem(storageKey(uid));
-      } catch {
-        // Diabaikan.
-      }
-      setResult(score);
+      const { score } = await submitAnswers(uid, "kraepelin", allColumns);
+      setResult(score ?? null);
       setPhase("result");
     } catch (caughtError) {
       console.error(caughtError);
-      setSubmitError("Jawaban gagal dikirim. Data tersimpan di perangkat ini; silakan coba kembali.");
+      setSubmitError(caughtError instanceof Error ? caughtError.message : "Penyimpanan belum dapat dikonfirmasi. Tetap di halaman ini dan coba kirim ulang.");
     } finally {
       setIsSubmitting(false);
     }
@@ -107,41 +69,41 @@ export default function KraepelinPage() {
       }
 
       try {
-        // Profil (nama) wajib ada agar dashboard punya nama untuk ditampilkan. Gagal membaca tidak
-        // mengalihkan (fail open) supaya error Firestore sementara tidak memblokir tes.
-        try {
           const candidate = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
           if (!active) return;
-          const nama = candidate.exists() ? candidate.data().nama : undefined;
-          if (typeof nama !== "string" || !nama.trim()) {
+          if (!isProfileComplete(candidate.data())) {
             router.replace("/profile");
             return;
           }
-        } catch (profileError) {
-          console.error(profileError);
-          if (!active) return;
-        }
 
         const session = await getDoc(doc(db, "kraepelinSessions", currentUser.uid));
         if (!active) return;
+        if (session.exists() && !isCompletedSession("kraepelin", session.data(), currentUser.uid)) throw new Error("Hasil lama perlu diperiksa tim HCGA.");
         if (session.exists()) {
           router.replace("/thankyou");
           return;
         }
 
-        const restored = readProgress(currentUser.uid);
+        await restoreBackup(currentUser.uid, "kraepelin");
+        if (!active) return;
+        const restored = parseProgress(readBackup(currentUser.uid, "kraepelin"), Date.now());
         setUser(currentUser);
-        setColumns(restored);
-        setColIdx(restored.length);
-        // Mulai baru: tampilkan intro. Kandidat yang kembali (ada progres tersimpan) sudah pernah melihatnya.
-        setPhase(restored.length === 0 ? "intro" : "countdown");
         setIsChecking(false);
-        // Ke-50 kolom sudah selesai tetapi pengiriman sebelumnya gagal: kirim ulang.
-        if (restored.length >= TOTAL_COLUMNS) void submit(restored, currentUser.uid);
+        if (!restored) { setPhase("intro"); return; }
+        progressRef.current = restored;
+        currentRef.current = restored.current;
+        setCurrent(restored.current);
+        setColumns(restored.columns);
+        setColIdx(restored.colIdx);
+        setPhase(restored.phase === "done" ? "test" : restored.phase);
+        setTimeLeft(Math.max(0, Math.ceil((restored.deadline - Date.now()) / 1000)));
+        setCountdown(Math.max(0, Math.ceil((restored.deadline - Date.now()) / 1000)));
+        saveBackup(currentUser.uid, "kraepelin", restored);
+        if (restored.phase === "done") void submit(restored.columns, currentUser.uid);
       } catch (caughtError) {
         console.error(caughtError);
         if (!active) return;
-        setLoadError("Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
+        setLoadError(caughtError instanceof Error ? caughtError.message : "Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
         setIsChecking(false);
       }
     });
@@ -152,49 +114,40 @@ export default function KraepelinPage() {
     };
   }, [router, submit]);
 
-  // Hitung mundur 3-2-1 sebelum tiap kolom.
+  // One persisted schedule drives both countdown and active column, including after refresh.
   useEffect(() => {
-    if (phase !== "countdown" || isChecking || colIdx >= TOTAL_COLUMNS) return;
-    let remaining = COUNTDOWN_FROM;
-    const interval = setInterval(() => {
-      remaining -= 1;
-      if (remaining > 0) {
-        setCountdown(remaining);
-        return;
+    if (isChecking || !user || phase === "intro" || phase === "result" || isSubmitting || submitError) return;
+    const tick = () => {
+      const saved = progressRef.current;
+      if (!saved || saved.phase === "done") return;
+      const next = advanceProgress(saved, Date.now());
+      progressRef.current = next;
+      if (next !== saved) {
+        currentRef.current = next.current;
+        setCurrent(next.current);
+        setColumns(next.columns);
+        setColIdx(next.colIdx);
+        saveBackup(user.uid, "kraepelin", next);
+        if (next.phase === "done") { void submit(next.columns, user.uid); return; }
+        setPhase(next.phase);
       }
-      clearInterval(interval);
-      setTimeLeft(TIME_LIMIT);
-      setPhase("test");
-    }, 1000);
+      const remaining = Math.max(0, Math.ceil((next.deadline - Date.now()) / 1000));
+      if (next.phase === "countdown") setCountdown(remaining);
+      else setTimeLeft(remaining);
+    };
+    tick();
+    const interval = setInterval(tick, 100);
     return () => clearInterval(interval);
-  }, [phase, colIdx, isChecking]);
+  }, [phase, isChecking, user, submit, isSubmitting, submitError]);
 
-  // Timer kolom. Sisa waktu dihitung dari tenggat (bukan dikurangi 1 tiap tick) agar tab yang
-  // di-throttle browser tidak memperpanjang waktu pengerjaan.
-  useEffect(() => {
-    if (phase !== "test" || isChecking || !user || colIdx >= TOTAL_COLUMNS) return;
-    const deadline = Date.now() + TIME_LIMIT * 1000;
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.round((deadline - Date.now()) / 1000));
-      setTimeLeft(remaining);
-      if (remaining > 0) return;
-
-      clearInterval(interval);
-      const nextColumns = [...columns, currentRef.current];
-      saveProgress(user.uid, nextColumns);
-      setColumns(nextColumns);
-      setColIdx(nextColumns.length);
-      currentRef.current = emptyColumn();
-      setCurrent(currentRef.current);
-      if (nextColumns.length >= TOTAL_COLUMNS) {
-        void submit(nextColumns, user.uid);
-        return;
-      }
-      setCountdown(COUNTDOWN_FROM);
-      setPhase("countdown");
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [phase, colIdx, columns, isChecking, user, submit]);
+  function startTest() {
+    if (!user) return;
+    const progress = newProgress(Date.now());
+    progressRef.current = progress;
+    saveBackup(user.uid, "kraepelin", progress);
+    setCountdown(COUNTDOWN_FROM);
+    setPhase("countdown");
+  }
 
   // Awal kolom: fokus ke input kosong pertama.
   useEffect(() => {
@@ -212,12 +165,14 @@ export default function KraepelinPage() {
   }, [phase, router]);
 
   function handleChange(slot: number, event: ChangeEvent<HTMLInputElement>) {
-    if (timeLeft <= 0) return;
+    if (!user || !progressRef.current || progressRef.current.phase !== "test" || Date.now() >= progressRef.current.deadline) return;
     const digit = event.target.value.replace(/\D/g, "").slice(-1);
     const next = [...currentRef.current];
     next[slot] = digit;
     currentRef.current = next;
     setCurrent(next);
+    progressRef.current = { ...progressRef.current, current: next };
+    saveBackup(user.uid, "kraepelin", progressRef.current);
 
     if (digit === "" || slot >= SLOTS - 1) return;
     const nextInput = inputRefs.current[slot + 1];
@@ -294,7 +249,7 @@ export default function KraepelinPage() {
               <p>Setiap kolom berlangsung selama 15 detik.</p>
               <p>Kerjakan dari atas ke bawah, secepat mungkin.</p>
             </div>
-            <button type="button" onClick={() => setPhase("countdown")} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100">Mulai tes</button>
+            <button type="button" onClick={startTest} className="mt-6 w-full rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-[#052f68] focus:outline-none focus:ring-4 focus:ring-blue-100">Mulai tes</button>
           </section>
         </div>
       </main>

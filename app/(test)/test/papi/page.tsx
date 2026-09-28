@@ -1,9 +1,13 @@
 "use client";
 
+import { readBackup, restoreBackup, saveBackup, submitAnswers } from "@/lib/assessment/client";
+import { isCompletedSession } from "@/lib/assessment/validation";
+import { isProfileComplete } from "@/lib/assessment/profile";
+
 import { auth, db } from "@/lib/firebase";
 import { PAPI_QUESTIONS } from "@/lib/papi/questions";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDocFromServer as getDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -21,7 +25,7 @@ const emptyAnswers = () => Array<string | null>(TOTAL).fill(null);
 // Hanya array 90 slot berisi null/"a"/"b" yang dipulihkan; data lain dibuang dan tes mulai dari kosong.
 function readProgress(uid: string): (string | null)[] {
   try {
-    const raw = localStorage.getItem(storageKey(uid));
+    const raw = readBackup(uid, "papi");
     if (!raw) return emptyAnswers();
     const parsed = JSON.parse(raw) as { answers?: unknown };
     if (Array.isArray(parsed.answers) && parsed.answers.length === TOTAL && parsed.answers.every((value) => value === null || value === "a" || value === "b")) {
@@ -40,7 +44,7 @@ function readProgress(uid: string): (string | null)[] {
 
 function saveProgress(uid: string, answers: (string | null)[]) {
   try {
-    localStorage.setItem(storageKey(uid), JSON.stringify({ answers }));
+    saveBackup(uid, "papi", { answers });
   } catch {
     // Cadangan lokal bersifat opsional.
   }
@@ -62,12 +66,7 @@ export default function PapiPage() {
     setIsSubmitting(true);
     setSubmitError("");
     try {
-      await setDoc(doc(db, "papiSessions", uid), {
-        candidateId: uid,
-        answers: finalAnswers,
-        submittedAt: serverTimestamp(),
-        hasSubmitted: true,
-      });
+      await submitAnswers(uid, "papi", finalAnswers);
       try {
         localStorage.removeItem(storageKey(uid));
       } catch {
@@ -76,7 +75,7 @@ export default function PapiPage() {
       setPhase("result");
     } catch (caughtError) {
       console.error(caughtError);
-      setSubmitError("Jawaban gagal dikirim. Data tersimpan di perangkat ini; silakan coba kembali.");
+      setSubmitError(caughtError instanceof Error ? caughtError.message : "Penyimpanan belum dapat dikonfirmasi. Tetap di halaman ini dan coba kirim ulang.");
     } finally {
       setIsSubmitting(false);
     }
@@ -91,27 +90,23 @@ export default function PapiPage() {
       }
 
       try {
-        // Profil (nama) wajib ada. Gagal membaca tidak mengalihkan (fail open) agar error sementara tidak memblokir tes.
-        try {
           const candidate = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
           if (!active) return;
-          const nama = candidate.exists() ? candidate.data().nama : undefined;
-          if (typeof nama !== "string" || !nama.trim()) {
+          if (!isProfileComplete(candidate.data())) {
             router.replace("/profile");
             return;
           }
-        } catch (profileError) {
-          console.error(profileError);
-          if (!active) return;
-        }
 
         const session = await getDoc(doc(db, "papiSessions", currentUser.uid));
         if (!active) return;
+        if (session.exists() && !isCompletedSession("papi", session.data(), currentUser.uid)) throw new Error("Hasil lama perlu diperiksa tim HCGA.");
         if (session.exists()) {
           router.replace("/thankyou");
           return;
         }
 
+        await restoreBackup(currentUser.uid, "papi");
+        if (!active) return;
         const restored = readProgress(currentUser.uid);
         answersRef.current = restored;
         setUser(currentUser);
@@ -120,7 +115,7 @@ export default function PapiPage() {
       } catch (caughtError) {
         console.error(caughtError);
         if (!active) return;
-        setLoadError("Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
+        setLoadError(caughtError instanceof Error ? caughtError.message : "Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
         setIsChecking(false);
       }
     });

@@ -3,9 +3,10 @@
 import { auth, db } from "@/lib/firebase";
 import { UserIcon } from "@heroicons/react/24/outline";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDocFromServer as getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { EDUCATION_OPTIONS, GENDER_OPTIONS, MAX_AGE, MAX_NAME_LENGTH, MIN_AGE, birthDateRange, isProfileComplete, isValidBirthDate } from "@/lib/assessment/profile";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -17,6 +18,8 @@ export default function ProfilePage() {
   const [jenisKelamin, setJenisKelamin] = useState("");
   const [pendidikan, setPendidikan] = useState("");
   const [tanggalLahir, setTanggalLahir] = useState("");
+  const hasSubmittedRef = useRef(false);
+  const hasCreatedAtRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -30,21 +33,19 @@ export default function ProfilePage() {
         const snapshot = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
         if (!active) return;
         const data = snapshot.exists() ? snapshot.data() : undefined;
-        if (data?.hasSubmitted === true) {
+        // Hub dan halaman tes mengarahkan ke sini selama profil belum lengkap, jadi pengalihan balik ke hub
+        // hanya boleh berdasarkan kelengkapan yang sama; bila tidak, keduanya saling mengalihkan tanpa henti.
+        if (isProfileComplete(data)) {
           router.replace("/test-hub");
           return;
         }
-        const hasNama = typeof data?.nama === "string" && data.nama.trim();
-        const hasJenisKelamin = typeof data?.jenisKelamin === "string" && data.jenisKelamin.trim();
-        if (hasNama && hasJenisKelamin) {
-          router.replace("/test-hub");
-          return;
-        }
-        // Profil sudah ada tetapi belum lengkap (mis. dibuat sebelum jenisKelamin ada): isi ulang form
-        // dengan data yang tersimpan agar kandidat tinggal melengkapi field yang kurang.
+        hasSubmittedRef.current = data?.hasSubmitted === true;
+        hasCreatedAtRef.current = data?.createdAt != null;
+        // Profil sudah ada tetapi belum lengkap: isi ulang form agar kandidat tinggal melengkapi field yang kurang.
         if (typeof data?.nama === "string") setNama(data.nama);
-        if (typeof data?.pendidikan === "string") setPendidikan(data.pendidikan);
-        if (typeof data?.tanggalLahir === "string") setTanggalLahir(data.tanggalLahir);
+        if ((GENDER_OPTIONS as readonly unknown[]).includes(data?.jenisKelamin)) setJenisKelamin(data?.jenisKelamin);
+        if ((EDUCATION_OPTIONS as readonly unknown[]).includes(data?.pendidikan)) setPendidikan(data?.pendidikan);
+        if (isValidBirthDate(data?.tanggalLahir)) setTanggalLahir(data?.tanggalLahir);
         setUser(currentUser);
         setIsChecking(false);
       } catch (caughtError) {
@@ -62,10 +63,15 @@ export default function ProfilePage() {
     };
   }, [router]);
 
-  const isFormValid = nama.trim() !== "" && jenisKelamin !== "" && pendidikan !== "" && tanggalLahir !== "";
+  const birthRange = useMemo(() => birthDateRange(), []);
+  const birthDateError = tanggalLahir !== "" && !isValidBirthDate(tanggalLahir)
+    ? `Tanggal lahir tidak valid. Usia peserta harus ${MIN_AGE}–${MAX_AGE} tahun.`
+    : "";
+  const isFormValid = isProfileComplete({ nama, jenisKelamin, pendidikan, tanggalLahir });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!isFormValid) return;
     if (!user) {
       router.replace("/login");
       return;
@@ -80,7 +86,10 @@ export default function ProfilePage() {
         pendidikan,
         tanggalLahir,
         email: user.email,
-        createdAt: serverTimestamp(),
+        // Jangan menimpa status HEXACO yang sudah terkirim; rules menolak true -> false.
+        ...(hasSubmittedRef.current ? {} : { hasSubmitted: false }),
+        // Rules mempertahankan waktu pendaftaran asli; hanya profil baru/lama tanpa createdAt yang mengisinya.
+        ...(hasCreatedAtRef.current ? {} : { createdAt: serverTimestamp() }),
       }, { merge: true });
       router.replace("/test-hub");
     } catch (caughtError) {
@@ -104,25 +113,26 @@ export default function ProfilePage() {
         <form onSubmit={handleSubmit} className="mt-8 space-y-5">
           <div>
             <label htmlFor="nama" className="mb-2 block text-sm font-semibold text-slate-700">Nama Lengkap</label>
-            <input id="nama" name="nama" type="text" autoComplete="name" required value={nama} onChange={(event) => setNama(event.target.value)} className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100" />
+            <input id="nama" name="nama" type="text" autoComplete="name" required maxLength={MAX_NAME_LENGTH} value={nama} onChange={(event) => setNama(event.target.value)} className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100" />
           </div>
           <div>
             <label htmlFor="jenisKelamin" className="mb-2 block text-sm font-semibold text-slate-700">Jenis Kelamin</label>
             <select id="jenisKelamin" name="jenisKelamin" required value={jenisKelamin} onChange={(event) => setJenisKelamin(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100">
               <option value="" disabled>Pilih jenis kelamin</option>
-              <option value="Laki-laki">Laki-laki</option><option value="Perempuan">Perempuan</option>
+              {GENDER_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="pendidikan" className="mb-2 block text-sm font-semibold text-slate-700">Pendidikan Terakhir</label>
             <select id="pendidikan" name="pendidikan" required value={pendidikan} onChange={(event) => setPendidikan(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100">
               <option value="" disabled>Pilih pendidikan terakhir</option>
-              <option value="SMA/SMK">SMA/SMK</option><option value="D3">D3</option><option value="S1">S1</option><option value="S2">S2</option><option value="S3">S3</option>
+              {EDUCATION_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
           </div>
           <div>
             <label htmlFor="tanggalLahir" className="mb-2 block text-sm font-semibold text-slate-700">Tanggal Lahir</label>
-            <input id="tanggalLahir" name="tanggalLahir" type="date" autoComplete="bday" required value={tanggalLahir} onChange={(event) => setTanggalLahir(event.target.value)} className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100" />
+            <input id="tanggalLahir" name="tanggalLahir" type="date" autoComplete="bday" required min={birthRange.min} max={birthRange.max} aria-invalid={birthDateError !== ""} aria-describedby={birthDateError ? "tanggalLahirError" : undefined} value={tanggalLahir} onChange={(event) => setTanggalLahir(event.target.value)} className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-blue-100" />
+            {birthDateError && <p id="tanggalLahirError" className="mt-2 text-sm text-red-700">{birthDateError}</p>}
           </div>
 
           {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}

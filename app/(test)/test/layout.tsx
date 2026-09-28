@@ -1,5 +1,6 @@
 "use client";
 
+import BackupNotice from "../BackupNotice";
 import type { SyntheticEvent } from "react";
 
 // Kolom isian tetap bisa dipilih, disalin, ditempel, dan diseret seperti biasa.
@@ -23,6 +24,7 @@ export default function TestPageLayout({ children }: { children: React.ReactNode
       onDragStart={blockOutsideEditable}
       className="select-none [-webkit-touch-callout:none] [&_[contenteditable]:not([contenteditable='false'])]:select-text [&_input]:select-text [&_input]:[-webkit-touch-callout:default] [&_textarea]:select-text [&_textarea]:[-webkit-touch-callout:default]"
     >
+      <BackupNotice />
       {children}
     </div>
   );

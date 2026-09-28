@@ -1,5 +1,6 @@
+import { isCompletedSession } from "@/lib/assessment/validation";
 import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDocFromServer as getDoc } from "firebase/firestore";
 
 export type SubTestStatus = "completed" | "in_progress" | "available";
 
@@ -33,13 +34,10 @@ export const SUB_TESTS: SubTest[] = [
     description: "Tes inteligensi, 9 bagian.",
     href: "/test/ist",
     isCompleted: async (uid) => {
-      // Rules istSessions belum tentu terpasang: gagal baca dianggap belum selesai.
-      try {
-        const snapshot = await getDoc(doc(db, "istSessions", uid));
-        return snapshot.exists();
-      } catch {
-        return false;
-      }
+      const snapshot = await getDoc(doc(db, "istSessions", uid));
+      if (!snapshot.exists()) return false;
+      if (!isCompletedSession("ist", snapshot.data(), uid)) throw new Error("Hasil tes perlu diperiksa tim HCGA.");
+      return true;
     },
     // Cadangan dibuat saat "Mulai Tes" ditekan dan dihapus saat submit berhasil.
     isInProgress: (uid) => readStorage(`istProgress:${uid}`) !== null,
@@ -50,13 +48,10 @@ export const SUB_TESTS: SubTest[] = [
     description: "Tes kepribadian, 90 pernyataan.",
     href: "/test/papi",
     isCompleted: async (uid) => {
-      // Rules papiSessions belum tentu terpasang: gagal baca dianggap belum selesai.
-      try {
-        const snapshot = await getDoc(doc(db, "papiSessions", uid));
-        return snapshot.exists();
-      } catch {
-        return false;
-      }
+      const snapshot = await getDoc(doc(db, "papiSessions", uid));
+      if (!snapshot.exists()) return false;
+      if (!isCompletedSession("papi", snapshot.data(), uid)) throw new Error("Hasil tes perlu diperiksa tim HCGA.");
+      return true;
     },
     // Cadangan dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
     isInProgress: (uid) => readStorage(`papiProgress:${uid}`) !== null,
@@ -67,13 +62,10 @@ export const SUB_TESTS: SubTest[] = [
     description: "Tes kepribadian, 24 kelompok pernyataan.",
     href: "/test/disc",
     isCompleted: async (uid) => {
-      // Rules discSessions belum tentu terpasang: gagal baca dianggap belum selesai.
-      try {
-        const snapshot = await getDoc(doc(db, "discSessions", uid));
-        return snapshot.exists();
-      } catch {
-        return false;
-      }
+      const snapshot = await getDoc(doc(db, "discSessions", uid));
+      if (!snapshot.exists()) return false;
+      if (!isCompletedSession("disc", snapshot.data(), uid)) throw new Error("Hasil tes perlu diperiksa tim HCGA.");
+      return true;
     },
     // Cadangan dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
     isInProgress: (uid) => readStorage(`discProgress:${uid}`) !== null,
@@ -84,13 +76,10 @@ export const SUB_TESTS: SubTest[] = [
     description: "Tes preferensi, 30 pasang pernyataan.",
     href: "/test/love-language",
     isCompleted: async (uid) => {
-      // Rules loveLanguageSessions belum tentu terpasang: gagal baca dianggap belum selesai.
-      try {
-        const snapshot = await getDoc(doc(db, "loveLanguageSessions", uid));
-        return snapshot.exists();
-      } catch {
-        return false;
-      }
+      const snapshot = await getDoc(doc(db, "loveLanguageSessions", uid));
+      if (!snapshot.exists()) return false;
+      if (!isCompletedSession("love-language", snapshot.data(), uid)) throw new Error("Hasil tes perlu diperiksa tim HCGA.");
+      return true;
     },
     // Cadangan dibuat saat jawaban pertama dipilih dan dihapus saat submit berhasil.
     isInProgress: (uid) => readStorage(`loveLanguageProgress:${uid}`) !== null,
@@ -101,13 +90,10 @@ export const SUB_TESTS: SubTest[] = [
     description: "Tes ketelitian dan ketahanan kerja.",
     href: "/test/kraepelin",
     isCompleted: async (uid) => {
-      // Koleksi kraepelinSessions belum ada / rules belum tentu terpasang: gagal baca dianggap belum selesai.
-      try {
-        const snapshot = await getDoc(doc(db, "kraepelinSessions", uid));
-        return snapshot.exists();
-      } catch {
-        return false;
-      }
+      const snapshot = await getDoc(doc(db, "kraepelinSessions", uid));
+      if (!snapshot.exists()) return false;
+      if (!isCompletedSession("kraepelin", snapshot.data(), uid)) throw new Error("Hasil tes perlu diperiksa tim HCGA.");
+      return true;
     },
     // Progres hanya disimpan setelah kolom pertama selesai (colIdx > 0).
     isInProgress: (uid) => {
@@ -115,7 +101,7 @@ export const SUB_TESTS: SubTest[] = [
       if (!raw) return false;
       try {
         const parsed = JSON.parse(raw) as { colIdx?: unknown };
-        return typeof parsed.colIdx === "number" && parsed.colIdx > 0;
+        return typeof parsed.colIdx === "number" && parsed.colIdx >= 0;
       } catch {
         return false;
       }

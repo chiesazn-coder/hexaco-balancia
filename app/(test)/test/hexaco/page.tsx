@@ -1,12 +1,13 @@
 "use client";
 
+import { readBackup, restoreBackup, saveBackup, submitAnswers } from "@/lib/assessment/client";
+
 import { auth, db } from "@/lib/firebase";
-import { calculateAll } from "@/lib/hexaco/calculator";
 import { HEXACO_QUESTIONS } from "@/lib/hexaco/questions";
 import type { Response } from "@/lib/types/hexaco";
 import { ArrowLeftIcon, ArrowRightIcon } from "@heroicons/react/24/outline";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { collection, doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { doc, getDocFromServer as getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -59,7 +60,9 @@ export default function TestPage() {
         }
 
         const storageKey = `hexacoResponses:${currentUser.uid}`;
-        const backup = localStorage.getItem(storageKey);
+        await restoreBackup(currentUser.uid, "hexaco");
+        if (!active) return;
+        const backup = readBackup(currentUser.uid, "hexaco");
         if (backup) {
           try {
             const parsed = JSON.parse(backup) as Response;
@@ -96,7 +99,7 @@ export default function TestPage() {
     if (!user) return;
     const next = { ...responses, [questionId]: value };
     setResponses(next);
-    localStorage.setItem(`hexacoResponses:${user.uid}`, JSON.stringify(next));
+    saveBackup(user.uid, "hexaco", next);
   }
 
   function changePage(page: number) {
@@ -115,28 +118,11 @@ export default function TestPage() {
     setError("");
     setIsSubmitting(true);
     try {
-      const scores = calculateAll(responses);
-      const sessionRef = doc(collection(db, "hexacoSessions"));
-      const candidateRef = doc(db, "hexacoCandidates", user.uid);
-      const batch = writeBatch(db);
-      batch.set(sessionRef, {
-        candidateId: user.uid,
-        email: user.email,
-        nama: candidate.nama,
-        pendidikan: candidate.pendidikan,
-        tanggalLahir: candidate.tanggalLahir,
-        responses,
-        scores,
-        submittedAt: serverTimestamp(),
-        status: "completed",
-      });
-      batch.update(candidateRef, { hasSubmitted: true, sessionId: sessionRef.id });
-      await batch.commit();
-      localStorage.removeItem(`hexacoResponses:${user.uid}`);
+      await submitAnswers(user.uid, "hexaco", responses);
       router.replace("/test-hub");
     } catch (caughtError) {
       console.error(caughtError);
-      setError("Jawaban gagal dikirim. Data sementara tetap tersimpan; silakan coba kembali.");
+      setError(caughtError instanceof Error ? caughtError.message : "Penyimpanan belum dapat dikonfirmasi. Tetap di halaman ini dan coba kirim ulang.");
       setIsSubmitting(false);
     }
   }

@@ -1,11 +1,15 @@
 "use client";
 
+import { readBackup, restoreBackup, saveBackup, submitAnswers } from "@/lib/assessment/client";
+import { isCompletedSession } from "@/lib/assessment/validation";
+import { isProfileComplete } from "@/lib/assessment/profile";
+
 import { auth, db } from "@/lib/firebase";
 import { ME_WORDS, type OptionKey } from "@/lib/ist/questions";
-import { scoreIst, type IstAnswers } from "@/lib/ist/scorer";
+import type { IstAnswers } from "@/lib/ist/scorer";
 import { IST_SUBTESTS, createEmptyAnswers, type IstSubtest } from "@/lib/ist/subtests";
 import { User, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDocFromServer as getDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -96,7 +100,7 @@ function resumePhase(index: number, timing: PhaseTiming): { timing: PhaseTiming;
 // currentSubtest = indeks bagian yang akan/sedang dikerjakan; SUBTEST_COUNT = semua bagian selesai, tinggal dikirim.
 function readProgress(uid: string): { currentSubtest: number; answers: IstAnswers; timing: PhaseTiming | null } | null {
   try {
-    const raw = localStorage.getItem(storageKey(uid));
+    const raw = readBackup(uid, "ist");
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { currentSubtest?: unknown; answers?: Record<string, unknown>; startedAt?: unknown; mePhase?: unknown };
     if (typeof parsed.currentSubtest === "number" && Number.isInteger(parsed.currentSubtest) && parsed.currentSubtest >= 0 && parsed.currentSubtest <= SUBTEST_COUNT && parsed.answers) {
@@ -130,7 +134,7 @@ function readProgress(uid: string): { currentSubtest: number; answers: IstAnswer
 
 function saveProgress(uid: string, currentSubtest: number, answers: IstAnswers, timing: PhaseTiming | null) {
   try {
-    localStorage.setItem(storageKey(uid), JSON.stringify({ currentSubtest, answers, ...timing }));
+    saveBackup(uid, "ist", { currentSubtest, answers, ...timing });
   } catch {
     // Cadangan lokal bersifat opsional.
   }
@@ -162,14 +166,7 @@ export default function IstPage() {
     setIsSubmitting(true);
     setSubmitError("");
     try {
-      const { scores } = scoreIst(finalAnswers);
-      await setDoc(doc(db, "istSessions", uid), {
-        candidateId: uid,
-        answers: finalAnswers,
-        scores,
-        submittedAt: serverTimestamp(),
-        hasSubmitted: true,
-      });
+      await submitAnswers(uid, "ist", finalAnswers);
       try {
         localStorage.removeItem(storageKey(uid));
       } catch {
@@ -178,7 +175,7 @@ export default function IstPage() {
       setPhase("result");
     } catch (caughtError) {
       console.error(caughtError);
-      setSubmitError("Jawaban gagal dikirim. Data tersimpan di perangkat ini; silakan coba kembali.");
+      setSubmitError(caughtError instanceof Error ? caughtError.message : "Penyimpanan belum dapat dikonfirmasi. Tetap di halaman ini dan coba kirim ulang.");
     } finally {
       setIsSubmitting(false);
     }
@@ -193,27 +190,23 @@ export default function IstPage() {
       }
 
       try {
-        // Profil (nama) wajib ada. Gagal membaca tidak mengalihkan (fail open) agar error sementara tidak memblokir tes.
-        try {
           const candidate = await getDoc(doc(db, "hexacoCandidates", currentUser.uid));
           if (!active) return;
-          const nama = candidate.exists() ? candidate.data().nama : undefined;
-          if (typeof nama !== "string" || !nama.trim()) {
+          if (!isProfileComplete(candidate.data())) {
             router.replace("/profile");
             return;
           }
-        } catch (profileError) {
-          console.error(profileError);
-          if (!active) return;
-        }
 
         const session = await getDoc(doc(db, "istSessions", currentUser.uid));
         if (!active) return;
+        if (session.exists() && !isCompletedSession("ist", session.data(), currentUser.uid)) throw new Error("Hasil lama perlu diperiksa tim HCGA.");
         if (session.exists()) {
           router.replace("/thankyou");
           return;
         }
 
+        await restoreBackup(currentUser.uid, "ist");
+        if (!active) return;
         const restored = readProgress(currentUser.uid);
         setUser(currentUser);
         if (!restored) {
@@ -253,7 +246,7 @@ export default function IstPage() {
       } catch (caughtError) {
         console.error(caughtError);
         if (!active) return;
-        setLoadError("Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
+        setLoadError(caughtError instanceof Error ? caughtError.message : "Data tes belum dapat dimuat. Periksa koneksi Anda lalu coba kembali.");
         setIsChecking(false);
       }
     });

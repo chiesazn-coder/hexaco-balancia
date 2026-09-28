@@ -1,3 +1,4 @@
+import "server-only";
 import type { DomainScore, FacetScore, HexacoResult, Response } from "@/lib/types/hexaco";
 import { NORMS } from "./norms";
 import { SCORING_KEY } from "./scoringKey";

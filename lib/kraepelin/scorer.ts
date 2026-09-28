@@ -1,3 +1,4 @@
+import "server-only";
 export interface KraepelinScore {
   correctPerCol: number[];
   errors: number;
