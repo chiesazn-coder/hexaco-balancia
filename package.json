@@ -2,9 +2,6 @@
   "name": "hexaco-inventory",
   "version": "0.1.0",
   "private": true,
-  "engines": {
-    "node": "22.x"
-  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -17,7 +14,7 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "firebase": "^12.18.0",
-    "firebase-admin": "^14.5.0",
+    "firebase-admin": "^13.10.0",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18",
