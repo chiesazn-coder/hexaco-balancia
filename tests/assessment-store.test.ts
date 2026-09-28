@@ -5,7 +5,7 @@ import { before, describe, test } from "node:test";
 import { deleteApp, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { progressRef, saveDraft, submitAssessment } from "../lib/server/assessment-store";
-import { authenticate } from "../lib/server/assessment-http";
+import { HttpError, authenticate, failure, routeContext } from "../lib/server/assessment-http";
 import { IST_SUBTESTS } from "../lib/ist/subtests";
 import { scoreIst, type IstAnswers } from "../lib/ist/scorer";
 import { GRID } from "../lib/kraepelin/grid";
@@ -150,5 +150,40 @@ describe("autentikasi API", () => {
     await rejects(authenticate(req(), "papi"), 401);
     await rejects(authenticate(req("Bearer bukan-token"), "papi"), 401);
     await rejects(authenticate(req("Bearer x"), "tes-lain"), 404);
+  });
+});
+
+describe("log kegagalan API", () => {
+  function capture(method: "warn" | "error", run: () => Response) {
+    const original = console[method];
+    const lines: string[] = [];
+    console[method] = (line: string) => { lines.push(line); };
+    try { return { response: run(), lines }; } finally { console[method] = original; }
+  }
+  const context = () => ({ ...routeContext("submit", new Request("http://localhost/api", { method: "POST" }), "ist"), uid: "cand-1" });
+
+  test("kegagalan yang diharapkan dicatat sebagai warning tanpa mengubah respons", async () => {
+    const { response, lines } = capture("warn", () => failure(new HttpError(409, "Lengkapi data diri."), context()));
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { error: "Lengkapi data diri." });
+    const log = JSON.parse(lines[0]);
+    assert.equal(log.event, "assessment_request_failed");
+    assert.deepEqual([log.action, log.method, log.test, log.uid, log.status, log.reason], ["submit", "POST", "ist", "cand-1", 409, "Lengkapi data diri."]);
+    assert.equal(typeof log.durationMs, "number");
+  });
+
+  test("kuota Firestore habis ditandai firestore_quota, kandidat tetap melihat pesan umum", async () => {
+    const quota = Object.assign(new Error("8 RESOURCE_EXHAUSTED: Quota exceeded."), { code: 8 });
+    const { response, lines } = capture("error", () => failure(quota, context()));
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: "Penyimpanan belum dapat dikonfirmasi. Tetap di halaman ini dan coba kembali." });
+    const log = JSON.parse(lines[0]);
+    assert.deepEqual([log.status, log.errorCode, log.hint, log.uid], [503, 8, "firestore_quota", "cand-1"]);
+  });
+
+  test("error tak terduga lain dicatat tanpa penanda kuota", () => {
+    const { lines } = capture("error", () => failure(new TypeError("x is not a function"), context()));
+    const log = JSON.parse(lines[0]);
+    assert.deepEqual([log.errorName, log.errorMessage, log.hint], ["TypeError", "x is not a function", undefined]);
   });
 });
