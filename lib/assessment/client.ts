@@ -3,7 +3,7 @@ import { auth } from "../firebase";
 import type { KraepelinScore } from "../kraepelin/scorer";
 import type { TestId } from "./validation";
 
-const prefixes: Record<TestId, string> = { ist: "istProgress", papi: "papiProgress", disc: "discProgress", "love-language": "loveLanguageProgress", kraepelin: "kraepelinProgress", hexaco: "hexacoResponses" };
+const prefixes: Record<TestId, string> = { ist: "istProgress", papi: "papiProgress", disc: "discProgress", "love-language": "loveLanguageProgress", kraepelin: "kraepelinProgress", hexaco: "hexacoResponses", "data-diri": "dataDiriProgress" };
 export const backupKey = (uid: string, test: TestId) => `${prefixes[test]}:${uid}`;
 type Entry = { uid: string; test: TestId; raw: string | null; revision: number; dirty: boolean; localOk: boolean; warning: string; timer?: ReturnType<typeof setTimeout>; running?: Promise<void>; stopped?: boolean };
 const entries = new Map<string, Entry>();

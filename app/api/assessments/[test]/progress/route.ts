@@ -1,4 +1,4 @@
-import { authenticate, failure, json, readBody, routeContext } from "@/lib/server/assessment-http";
+import { authenticate, bodyLimit, failure, json, readBody, routeContext } from "@/lib/server/assessment-http";
 import { adminDb } from "@/lib/server/firebase-admin";
 import { progressRef, saveDraft } from "@/lib/server/assessment-store";
 
@@ -18,6 +18,6 @@ export async function PUT(request: Request, { params }: { params: { test: string
   try {
     const { identity, test } = await authenticate(request, params.test);
     context.uid = identity.uid;
-    return json(await saveDraft(adminDb(), identity.uid, test, await readBody(request)));
+    return json(await saveDraft(adminDb(), identity.uid, test, await readBody(request, bodyLimit(test))));
   } catch (error) { return failure(error, context); }
 }

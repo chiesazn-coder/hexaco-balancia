@@ -10,7 +10,7 @@
 import { writeFileSync } from "node:fs";
 import type { DocumentData } from "firebase-admin/firestore";
 import { adminDb } from "../lib/server/firebase-admin";
-import { COLLECTIONS, isCompletedSession, isRecord, validAnswers, type TestId } from "../lib/assessment/validation";
+import { COLLECTIONS, PSYCH_TESTS, isCompletedSession, isRecord, validAnswers, type TestId } from "../lib/assessment/validation";
 import { scoreIst, type IstAnswers } from "../lib/ist/scorer";
 import { scoreKraepelin } from "../lib/kraepelin/scorer";
 import { GRID } from "../lib/kraepelin/grid";
@@ -125,7 +125,7 @@ async function main() {
   profiles.forEach((data, id) => auditProfile(id, data));
 
   let hexacoSessions = new Map<string, string[]>();
-  for (const test of Object.keys(COLLECTIONS) as TestId[]) {
+  for (const test of PSYCH_TESTS) {
     const sessions = await auditSessions(test, profiles);
     if (test === "hexaco") hexacoSessions = sessions;
   }

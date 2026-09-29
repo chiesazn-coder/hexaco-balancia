@@ -12,7 +12,9 @@ export async function authenticate(request: Request, test: string) {
   try { return { identity: await adminAuth().verifyIdToken(token, true), test }; }
   catch { throw new HttpError(401, "Sesi tidak valid. Silakan masuk kembali."); }
 }
-export async function readBody(request: Request): Promise<unknown> {
+// Data Diri is a long form; multi-byte text can exceed 64 KB (ASCII max ≈ 32 KB), so it gets 128 KB.
+export const bodyLimit = (test: string) => (test === "data-diri" ? 128000 : 64000);
+export async function readBody(request: Request, maxBytes = 64000): Promise<unknown> {
   const reader = request.body?.getReader();
   if (!reader) throw new HttpError(400, "Data tidak tersedia.");
   const chunks: Uint8Array[] = [];
@@ -21,7 +23,7 @@ export async function readBody(request: Request): Promise<unknown> {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > 64000) { await reader.cancel(); throw new HttpError(413, "Data terlalu besar."); }
+    if (size > maxBytes) { await reader.cancel(); throw new HttpError(413, "Data terlalu besar."); }
     chunks.push(value);
   }
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }

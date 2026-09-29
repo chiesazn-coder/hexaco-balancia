@@ -3,12 +3,17 @@ import { GRID } from "../kraepelin/grid";
 import { PAPI_QUESTIONS } from "../papi/questions";
 import { DISC_GROUPS } from "../disc/questions";
 import { LOVE_LANGUAGE_ITEMS } from "../love-language/love-language-questions";
+import { formFromStored, validPersonalData, validPersonalDataBackup, validPersonalDataDraft } from "./personal-data";
 
 export const COLLECTIONS = {
   ist: "istSessions", papi: "papiSessions", disc: "discSessions",
   "love-language": "loveLanguageSessions", kraepelin: "kraepelinSessions", hexaco: "hexacoSessions",
+  // Formulir Data Diri: memakai jalur submit/cadangan yang sama, tetapi bukan tes psikologi.
+  "data-diri": "personalDataSessions",
 } as const;
 export type TestId = keyof typeof COLLECTIONS;
+// Tes psikologi saja (tanpa Data Diri), untuk kode yang mengolah hasil tes, mis. audit skor.
+export const PSYCH_TESTS = (Object.keys(COLLECTIONS) as TestId[]).filter(test => test !== "data-diri");
 export const isTestId = (v: string): v is TestId => Object.hasOwn(COLLECTIONS, v);
 export const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const exactKeys = (v: Record<string, unknown>, keys: string[]) => Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
@@ -35,6 +40,7 @@ export function validAnswers(test: TestId, answers: unknown, draft = false): boo
       ? v === null || v === 0 || v === 1
       : LOVE_LANGUAGE_ITEMS[i].options.some(o => o.letter === v));
     case "kraepelin": return list(answers, GRID.length, v => list(v, GRID[0].length - 1, digit));
+    case "data-diri": return draft ? validPersonalDataDraft(answers) : validPersonalData(answers);
     case "hexaco": return isRecord(answers) && (draft || Object.keys(answers).length === 100) &&
       Object.entries(answers).every(([k, v]) => /^(?:[1-9]|[1-9][0-9]|100)$/.test(k) && Number.isInteger(v) && Number(v) >= 1 && Number(v) <= 5);
   }
@@ -42,6 +48,7 @@ export function validAnswers(test: TestId, answers: unknown, draft = false): boo
 
 export function validDraft(test: TestId, data: unknown): boolean {
   if (!isRecord(data)) return false;
+  if (test === "data-diri") return validPersonalDataBackup(data);
   if (test === "hexaco") return validAnswers(test, data, true);
   if (test === "kraepelin") {
     return Number.isInteger(data.colIdx) && Array.isArray(data.columns) && data.colIdx === data.columns.length &&
@@ -57,6 +64,8 @@ export function validDraft(test: TestId, data: unknown): boolean {
 
 export function isCompletedSession(test: TestId, data: Record<string, unknown> | undefined, uid: string): boolean {
   if (!data || data.candidateId !== uid || !data.submittedAt) return false;
+  // Struktur saja (mode draft): aturan waktu seperti batas usia tidak boleh membuat data lama tiba-tiba "tidak sah".
+  if (test === "data-diri") return data.hasSubmitted === true && validPersonalDataDraft(formFromStored(data));
   const answers = test === "hexaco" ? data.responses : test === "kraepelin" && Array.isArray(data.answers)
     ? data.answers.map(v => isRecord(v) ? v.values : null) : data.answers;
   return (test === "hexaco" ? data.status === "completed" : data.hasSubmitted === true) && validAnswers(test, answers);

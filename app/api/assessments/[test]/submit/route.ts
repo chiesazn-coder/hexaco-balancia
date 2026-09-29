@@ -1,4 +1,4 @@
-import { authenticate, failure, json, readBody, routeContext } from "@/lib/server/assessment-http";
+import { authenticate, bodyLimit, failure, json, readBody, routeContext } from "@/lib/server/assessment-http";
 import { adminDb } from "@/lib/server/firebase-admin";
 import { submitAssessment } from "@/lib/server/assessment-store";
 
@@ -8,6 +8,6 @@ export async function POST(request: Request, { params }: { params: { test: strin
   try {
     const { identity, test } = await authenticate(request, params.test);
     context.uid = identity.uid;
-    return json(await submitAssessment(adminDb(), identity.uid, test, await readBody(request)));
+    return json(await submitAssessment(adminDb(), identity.uid, test, await readBody(request, bodyLimit(test)), identity.email));
   } catch (error) { return failure(error, context); }
 }

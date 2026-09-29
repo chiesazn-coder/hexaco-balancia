@@ -1,6 +1,7 @@
 import "server-only";
 import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { isProfileComplete } from "../assessment/profile";
+import { sameEmail, type PersonalDataForm } from "../assessment/personal-data";
 import { COLLECTIONS, isRecord, isCompletedSession, validAnswers, validDraft, type TestId } from "../assessment/validation";
 import { scoreIst, type IstAnswers } from "../ist/scorer";
 import { scoreKraepelin } from "../kraepelin/scorer";
@@ -14,9 +15,13 @@ export function progressRef(db: Firestore, uid: string, test: TestId) {
 }
 
 // The fixed document ID and transaction make retries (including lost responses) idempotent.
-export async function submitAssessment(db: Firestore, uid: string, test: TestId, body: unknown) {
+// accountEmail comes from the verified ID token; Data Diri must carry the same email.
+export async function submitAssessment(db: Firestore, uid: string, test: TestId, body: unknown, accountEmail?: string) {
   if (!isRecord(body) || Object.keys(body).some(k => !["answers", "startedAt"].includes(k)) || !validAnswers(test, body.answers)) {
-    throw new HttpError(400, "Jawaban tidak lengkap atau format jawaban tidak valid.");
+    throw new HttpError(400, test === "data-diri" ? "Data diri belum lengkap atau formatnya tidak valid." : "Jawaban tidak lengkap atau format jawaban tidak valid.");
+  }
+  if (test === "data-diri" && !sameEmail((body.answers as PersonalDataForm).identitas.email, accountEmail)) {
+    throw new HttpError(400, "Email harus sama dengan email akun yang dipakai login.");
   }
   const start = body.startedAt;
   if (start !== undefined && start !== null && !(typeof start === "number" && Number.isFinite(start) && start > 0 && start <= Date.now())) {
@@ -47,7 +52,12 @@ export async function submitAssessment(db: Firestore, uid: string, test: TestId,
     }
     const base = { candidateId: uid, submittedAt: FieldValue.serverTimestamp(), hasSubmitted: true, schemaVersion: 2, scoreSource: "server" };
     let result: Record<string, unknown>;
-    if (test === "ist") result = { ...base, answers: body.answers, scores: scoreIst(body.answers as IstAnswers).scores };
+    if (test === "data-diri") {
+      // Only the validated form sections are stored; ownership and status fields are set here.
+      const form = body.answers as PersonalDataForm;
+      result = { ...form, identitas: { ...form.identitas, email: accountEmail }, candidateId: uid, hasSubmitted: true, submittedAt: FieldValue.serverTimestamp(), schemaVersion: 1 };
+    }
+    else if (test === "ist") result = { ...base, answers: body.answers, scores: scoreIst(body.answers as IstAnswers).scores };
     else if (test === "kraepelin") result = { ...base, answers: (body.answers as string[][]).map(values => ({ values })), ...scoreKraepelin(body.answers as string[][], GRID) };
     else if (test === "hexaco") result = {
       ...base, responses: body.answers, scores: calculateAll(body.answers as HexacoAnswers), status: "completed",

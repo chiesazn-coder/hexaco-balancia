@@ -5,7 +5,10 @@ import { before, describe, test } from "node:test";
 import { deleteApp, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { progressRef, saveDraft, submitAssessment } from "../lib/server/assessment-store";
-import { HttpError, authenticate, failure, routeContext } from "../lib/server/assessment-http";
+import { HttpError, authenticate, bodyLimit, failure, readBody, routeContext } from "../lib/server/assessment-http";
+import { isCompletedSession } from "../lib/assessment/validation";
+import { emptyPersonalData } from "../lib/assessment/personal-data";
+import { completeForm } from "./fixtures/personal-data";
 import { IST_SUBTESTS } from "../lib/ist/subtests";
 import { scoreIst, type IstAnswers } from "../lib/ist/scorer";
 import { GRID } from "../lib/kraepelin/grid";
@@ -185,5 +188,84 @@ describe("log kegagalan API", () => {
     const { lines } = capture("error", () => failure(new TypeError("x is not a function"), context()));
     const log = JSON.parse(lines[0]);
     assert.deepEqual([log.errorName, log.errorMessage, log.hint], ["TypeError", "x is not a function", undefined]);
+  });
+});
+
+describe("Data Diri (Firestore Emulator)", { skip: !emulator && "FIRESTORE_EMULATOR_HOST tidak diset" }, () => {
+  const EMAIL = "uji@example.com";
+  before(async () => {
+    if (!db) {
+      await Promise.all(getApps().map(app => deleteApp(app)));
+      db = getFirestore(initializeApp({ projectId: "demo-hexaco" }, "store-test-data-diri"));
+    }
+  });
+
+  test("submit tersimpan dengan field dari server, tanpa key jawaban tes", async () => {
+    const uid = await candidate();
+    const result = await submitAssessment(db, uid, "data-diri", { answers: completeForm(" Uji@Example.com ") }, EMAIL);
+    assert.deepEqual(result, { completed: true, alreadySubmitted: false });
+    const saved = (await db.doc(`personalDataSessions/${uid}`).get()).data()!;
+    assert.equal(saved.candidateId, uid);
+    assert.equal(saved.hasSubmitted, true);
+    assert.equal(saved.schemaVersion, 1);
+    assert.ok(saved.submittedAt.toDate() instanceof Date, "submittedAt harus waktu server");
+    assert.equal(saved.identitas.email, EMAIL, "email disimpan persis sesuai akun login");
+    assert.equal(saved.identitas.noKtp, "3171234567890001");
+    assert.equal("answers" in saved || "scoreSource" in saved, false);
+    assert.ok(isCompletedSession("data-diri", saved, uid));
+  });
+
+  test("email berbeda dari akun login atau akun tanpa email ditolak", async () => {
+    const uid = await candidate();
+    await rejects(submitAssessment(db, uid, "data-diri", { answers: completeForm("lain@example.com") }, EMAIL), 400);
+    await rejects(submitAssessment(db, uid, "data-diri", { answers: completeForm() }, undefined), 400);
+    assert.equal((await db.doc(`personalDataSessions/${uid}`).get()).exists, false);
+  });
+
+  test("field wajib kosong atau key asing ditolak tanpa membuat dokumen", async () => {
+    const uid = await candidate();
+    const noKtp = completeForm(); noKtp.identitas.noKtp = "";
+    await rejects(submitAssessment(db, uid, "data-diri", { answers: noKtp }, EMAIL), 400);
+    await rejects(submitAssessment(db, uid, "data-diri", { answers: { ...completeForm(), candidateId: "orang-lain", hasSubmitted: true } }, EMAIL), 400);
+    await rejects(submitAssessment(db, uid, "data-diri", { answers: emptyPersonalData() }, EMAIL), 400);
+    assert.equal((await db.doc(`personalDataSessions/${uid}`).get()).exists, false);
+  });
+
+  test("kirim ulang dikenali dan tidak menimpa data pertama", async () => {
+    const uid = await candidate();
+    await submitAssessment(db, uid, "data-diri", { answers: completeForm() }, EMAIL);
+    const changed = completeForm(); changed.identitas.tempatLahir = "Bandung";
+    const again = await submitAssessment(db, uid, "data-diri", { answers: changed }, EMAIL);
+    assert.equal(again.alreadySubmitted, true);
+    assert.equal((await db.doc(`personalDataSessions/${uid}`).get()).data()!.identitas.tempatLahir, "Jakarta");
+  });
+
+  test("profil asesmen belum lengkap ditolak", async () => {
+    const { jenisKelamin: _omit, ...incomplete } = profile;
+    await rejects(submitAssessment(db, await candidate(incomplete), "data-diri", { answers: completeForm() }, EMAIL), 409);
+  });
+
+  test("cadangan draft: langkah wizard, konflik tab, dan dihapus setelah submit", async () => {
+    const uid = await candidate();
+    const draft = { step: 3, form: emptyPersonalData() };
+    assert.deepEqual(await saveDraft(db, uid, "data-diri", { revision: 0, data: draft }), { revision: 1 });
+    await rejects(saveDraft(db, uid, "data-diri", { revision: 0, data: { ...draft, step: 4 } }), 409);
+    await rejects(saveDraft(db, uid, "data-diri", { revision: 1, data: { ...draft, step: 9 } }), 400);
+    await rejects(saveDraft(db, uid, "data-diri", { revision: 1, data: { answers: [] } }), 400);
+    await submitAssessment(db, uid, "data-diri", { answers: completeForm() }, EMAIL);
+    assert.equal((await progressRef(db, uid, "data-diri").get()).exists, false);
+    await rejects(saveDraft(db, uid, "data-diri", { revision: 1, data: draft }), 409);
+  });
+});
+
+describe("batas ukuran body", () => {
+  const request = (bytes: number) => new Request("http://localhost/api", { method: "PUT", body: JSON.stringify({ text: "x".repeat(bytes) }) });
+
+  test("Data Diri 128 KB, tes lain tetap 64 KB", async () => {
+    assert.equal(bodyLimit("data-diri"), 128000);
+    assert.equal(bodyLimit("papi"), 64000);
+    await rejects(readBody(request(70000), bodyLimit("papi")), 413);
+    assert.equal(((await readBody(request(70000), bodyLimit("data-diri"))) as { text: string }).text.length, 70000);
+    await rejects(readBody(request(130000), bodyLimit("data-diri")), 413);
   });
 });
