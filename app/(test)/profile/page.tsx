@@ -6,6 +6,8 @@ import { User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDocFromServer as getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { guardRedirect } from "@/lib/navigation/guards";
+import { readNextParam } from "@/lib/navigation/next-path";
 import { EDUCATION_OPTIONS, GENDER_OPTIONS, MAX_AGE, MAX_NAME_LENGTH, MIN_AGE, birthDateRange, isProfileComplete, isValidBirthDate } from "@/lib/assessment/profile";
 
 export default function ProfilePage() {
@@ -25,7 +27,7 @@ export default function ProfilePage() {
     let active = true;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
-        router.replace("/login");
+        router.replace(guardRedirect("profile", { signedIn: false })!);
         return;
       }
 
@@ -35,8 +37,9 @@ export default function ProfilePage() {
         const data = snapshot.exists() ? snapshot.data() : undefined;
         // Hub dan halaman tes mengarahkan ke sini selama profil belum lengkap, jadi pengalihan balik ke hub
         // hanya boleh berdasarkan kelengkapan yang sama; bila tidak, keduanya saling mengalihkan tanpa henti.
-        if (isProfileComplete(data)) {
-          router.replace("/test-hub");
+        const target = guardRedirect("profile", { signedIn: true, profileComplete: isProfileComplete(data), next: readNextParam() });
+        if (target) {
+          router.replace(target);
           return;
         }
         hasSubmittedRef.current = data?.hasSubmitted === true;
@@ -91,7 +94,7 @@ export default function ProfilePage() {
         // Rules mempertahankan waktu pendaftaran asli; hanya profil baru/lama tanpa createdAt yang mengisinya.
         ...(hasCreatedAtRef.current ? {} : { createdAt: serverTimestamp() }),
       }, { merge: true });
-      router.replace("/test-hub");
+      router.replace(guardRedirect("profile", { signedIn: true, profileComplete: true, next: readNextParam() })!);
     } catch (caughtError) {
       console.error(caughtError);
       setError("Data diri gagal disimpan. Periksa koneksi Anda lalu coba kembali.");

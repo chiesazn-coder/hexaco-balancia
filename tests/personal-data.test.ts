@@ -4,6 +4,9 @@ import {
   LIMITS,
   MAKS_FORMAL,
   emptyPersonalData,
+  normalizePersonalData,
+  personalDataIssues,
+  todayInJakarta,
   prefillFromProfile,
   sameEmail,
   validPersonalData,
@@ -93,7 +96,7 @@ describe("validasi kirim", () => {
   test("format field wajib", () => {
     assert.equal(validPersonalData(edit(f => { f.identitas.noKtp = "317123456789000"; })), false, "KTP 15 digit");
     assert.equal(validPersonalData(edit(f => { f.identitas.noKtp = "31712345678900012"; })), false, "KTP 17 digit");
-    assert.equal(validPersonalData(edit(f => { f.identitas.noKtp = "3171-2345-6789-0001"; })), false, "KTP dengan tanda -");
+    assert.equal(validPersonalData(edit(f => { f.identitas.noKtp = "3171/2345/6789/0001"; })), false, "KTP dengan garis miring");
     assert.equal(validPersonalData(edit(f => { f.identitas.noHandphone = "08123"; })), false, "HP terlalu pendek");
     assert.equal(validPersonalData(edit(f => { f.identitas.noHandphone = "0812abc7890"; })), false, "HP berisi huruf");
     assert.ok(validPersonalData(edit(f => { f.identitas.noHandphone = "+62 812 3456 7890"; })), "HP dengan +62 dan spasi");
@@ -139,5 +142,79 @@ describe("status selesai dan daftar tes", () => {
     assert.ok(sameEmail(" Uji@Example.com ", "uji@example.com"));
     assert.equal(sameEmail("uji@example.com", undefined), false);
     assert.equal(sameEmail("a@example.com", "b@example.com"), false);
+  });
+});
+
+describe("nomor dengan spasi, titik, dan tanda hubung", () => {
+  test("diterima saat validasi", () => {
+    assert.ok(validPersonalData(edit(f => { f.identitas.noNpwp = "12.345.678.9-012.345"; })), "NPWP format resmi");
+    assert.ok(validPersonalData(edit(f => { f.identitas.noKtp = "3171 2345 6789 0001"; })), "NIK dengan spasi");
+    assert.ok(validPersonalData(edit(f => { f.identitas.noKtp = "3171-2345-6789-0001"; })), "NIK dengan tanda hubung");
+    assert.ok(validPersonalData(edit(f => { f.identitas.noBpjsKesehatan = "0001.2345.678"; f.identitas.alamatTetap.kodePos = "12 345"; })));
+    assert.ok(validPersonalData(edit(f => { f.identitas.noHandphone = "+62 812-3456-7890"; f.identitas.noSim = "1234-5678-9012"; })));
+    assert.equal(validPersonalData(edit(f => { f.identitas.noNpwp = "12.345.678.9-012.34"; })), false, "NPWP 14 digit setelah dinormalisasi");
+  });
+
+  test("disimpan sebagai digit saja; + di depan nomor HP dipertahankan", () => {
+    const form = normalizePersonalData(edit(f => {
+      f.identitas.noNpwp = "12.345.678.9-012.345";
+      f.identitas.noKtp = "3171 2345 6789 0001";
+      f.identitas.noHandphone = "+62 812-3456-7890";
+      f.identitas.alamatTetap.kodePos = "12 345";
+      f.identitas.kontakDarurat.noHandphone = "0812.3456.7890";
+      f.keluarga.ibuKandung.noTelepon = "(021) 555-1234".replace(/[()]/g, "");
+    }));
+    assert.equal(form.identitas.noNpwp, "123456789012345");
+    assert.equal(form.identitas.noKtp, "3171234567890001");
+    assert.equal(form.identitas.noHandphone, "+6281234567890");
+    assert.equal(form.identitas.alamatTetap.kodePos, "12345");
+    assert.equal(form.identitas.kontakDarurat.noHandphone, "081234567890");
+    assert.equal(form.keluarga.ibuKandung.noTelepon, "0215551234");
+    assert.ok(validPersonalData(form));
+  });
+});
+
+describe("batas jawaban uraian", () => {
+  test("1000 karakter diterima, 1001 ditolak", () => {
+    assert.equal(LIMITS.answer, 1000);
+    assert.ok(validPersonalData(edit(f => { f.sosial.hobi = "x".repeat(1000); })));
+    assert.equal(validPersonalData(edit(f => { f.sosial.hobi = "x".repeat(1001); })), false);
+  });
+});
+
+describe("daftar kesalahan per langkah", () => {
+  test("formulir lengkap tidak punya kesalahan", () => {
+    assert.deepEqual(personalDataIssues(completeForm()), []);
+  });
+
+  test("formulir kosong menunjukkan field wajib di langkah 1 dan pernyataan di langkah 9", () => {
+    const issues = personalDataIssues(emptyPersonalData());
+    assert.ok(issues.some(i => i.step === 0 && i.label.startsWith("Nomor KTP")));
+    assert.ok(issues.some(i => i.step === 0 && i.label.startsWith("Nomor handphone")));
+    assert.ok(issues.some(i => i.step === 8 && i.label === "Persetujuan pemrosesan data pribadi"));
+    assert.deepEqual(issues.map(i => i.step), [...issues.map(i => i.step)].sort((a, b) => a - b), "urut per langkah");
+  });
+
+  test("selalu sejalan dengan validator server", () => {
+    const cases: ((f: PersonalDataForm) => void)[] = [
+      f => { f.identitas.noKtp = "123"; },
+      f => { f.identitas.noNpwp = "12"; },
+      f => { f.identitas.alamatTetap.kodePos = "1"; },
+      f => { f.identitas.email = "x"; },
+      f => { f.pernyataan.namaJelas = ""; },
+      f => { f.keluarga.anak = [{ nama: "A", tempatLahir: "", tanggalLahir: "2020-02-31", pendidikan: "" }]; },
+      f => { f.intern.tanggalMulaiKerja = "bukan tanggal"; },
+      f => { f.keluarga.ibuKandung.noTelepon = "12"; },
+      f => { f.identitas.noHandphone = "0812 3456 7890"; },
+    ];
+    for (const change of cases) {
+      const form = edit(change);
+      assert.equal(personalDataIssues(form).length === 0, validPersonalData(form), JSON.stringify(personalDataIssues(form)));
+    }
+  });
+
+  test("tanggal pernyataan memakai zona waktu Asia/Jakarta", () => {
+    assert.equal(todayInJakarta(new Date("2026-09-28T20:00:00Z")), "2026-09-29");
+    assert.equal(todayInJakarta(new Date("2026-09-28T10:00:00Z")), "2026-09-28");
   });
 });

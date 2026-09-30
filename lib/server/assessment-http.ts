@@ -12,7 +12,8 @@ export async function authenticate(request: Request, test: string) {
   try { return { identity: await adminAuth().verifyIdToken(token, true), test }; }
   catch { throw new HttpError(401, "Sesi tidak valid. Silakan masuk kembali."); }
 }
-// Data Diri is a long form; multi-byte text can exceed 64 KB (ASCII max ≈ 32 KB), so it gets 128 KB.
+// Data Diri is a long form; multi-byte text can exceed 64 KB (max ≈ 40 KB ASCII, ≈ 111 KB with 3-byte characters;
+// see tests/data-diri-limits.test.ts), so it gets 128 KB.
 export const bodyLimit = (test: string) => (test === "data-diri" ? 128000 : 64000);
 export async function readBody(request: Request, maxBytes = 64000): Promise<unknown> {
   const reader = request.body?.getReader();

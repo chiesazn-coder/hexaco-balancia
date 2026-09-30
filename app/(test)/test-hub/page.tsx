@@ -2,13 +2,14 @@
 
 import { isProfileComplete } from "@/lib/assessment/profile";
 import { auth, db } from "@/lib/firebase";
+import { guardRedirect } from "@/lib/navigation/guards";
 import { ArrowRightIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDocFromServer } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { VISIBLE_SUB_TESTS, SubTestStatus, getInProgressTest, getStatuses, loadCompletion } from "../subtests";
+import { VISIBLE_SUB_TESTS, SubTestStatus, loadTestStatuses } from "../subtests";
 
 // Sementara nonaktif (masih ditinjau HR): semua tes yang belum selesai bebas dibuka. Ubah ke true agar tes lain
 // terkunci selama ada tes yang sedang dikerjakan.
@@ -23,7 +24,7 @@ export default function TestHubPage() {
     let active = true;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
-        router.replace("/login");
+        router.replace(guardRedirect("test-hub", { signedIn: false })!);
         return;
       }
 
@@ -31,16 +32,16 @@ export default function TestHubPage() {
         // Sesi login tersimpan di browser, jadi hub bisa dibuka tanpa melewati login/profil.
         const profile = await getDocFromServer(doc(db, "hexacoCandidates", currentUser.uid));
         if (!active) return;
-        if (!isProfileComplete(profile.data())) {
-          router.replace("/profile");
+        const profileTarget = guardRedirect("test-hub", { signedIn: true, profileComplete: isProfileComplete(profile.data()) });
+        if (profileTarget) {
+          router.replace(profileTarget);
           return;
         }
-        const completion = await loadCompletion(currentUser.uid);
+        const next = await loadTestStatuses(currentUser.uid);
         if (!active) return;
-        const completedIds = VISIBLE_SUB_TESTS.filter((_, index) => completion[index]).map((subTest) => subTest.id);
-        const next = getStatuses(completion, getInProgressTest(currentUser.uid, completedIds));
-        if (next.every((status) => status === "completed")) {
-          router.replace("/thankyou");
+        const doneTarget = guardRedirect("test-hub", { signedIn: true, profileComplete: true, allTestsDone: next.every((status) => status === "completed") });
+        if (doneTarget) {
+          router.replace(doneTarget);
           return;
         }
         setStatuses(next);

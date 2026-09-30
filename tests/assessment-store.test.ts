@@ -211,6 +211,7 @@ describe("Data Diri (Firestore Emulator)", { skip: !emulator && "FIRESTORE_EMULA
     assert.ok(saved.submittedAt.toDate() instanceof Date, "submittedAt harus waktu server");
     assert.equal(saved.identitas.email, EMAIL, "email disimpan persis sesuai akun login");
     assert.equal(saved.identitas.noKtp, "3171234567890001");
+    assert.match(saved.pernyataan.tanggal, /^\d{4}-\d{2}-\d{2}$/, "tanggal pernyataan diisi server");
     assert.equal("answers" in saved || "scoreSource" in saved, false);
     assert.ok(isCompletedSession("data-diri", saved, uid));
   });
@@ -229,6 +230,17 @@ describe("Data Diri (Firestore Emulator)", { skip: !emulator && "FIRESTORE_EMULA
     await rejects(submitAssessment(db, uid, "data-diri", { answers: { ...completeForm(), candidateId: "orang-lain", hasSubmitted: true } }, EMAIL), 400);
     await rejects(submitAssessment(db, uid, "data-diri", { answers: emptyPersonalData() }, EMAIL), 400);
     assert.equal((await db.doc(`personalDataSessions/${uid}`).get()).exists, false);
+  });
+
+  test("nomor disimpan dalam bentuk digit", async () => {
+    const uid = await candidate();
+    const form = completeForm();
+    form.identitas.noKtp = "3171 2345 6789 0001";
+    form.identitas.noNpwp = "12.345.678.9-012.345";
+    form.identitas.noHandphone = "+62 812-3456-7890";
+    await submitAssessment(db, uid, "data-diri", { answers: form }, EMAIL);
+    const saved = (await db.doc(`personalDataSessions/${uid}`).get()).data()!;
+    assert.deepEqual([saved.identitas.noKtp, saved.identitas.noNpwp, saved.identitas.noHandphone], ["3171234567890001", "123456789012345", "+6281234567890"]);
   });
 
   test("kirim ulang dikenali dan tidak menimpa data pertama", async () => {

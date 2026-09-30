@@ -25,9 +25,11 @@ export const LIMITS = {
   fullName: 200, // nama lengkap kandidat / pernyataan
   short: 50, // agama, gol. darah, jenis SIM, tahun, gelar, lamanya, kendaraan, kota
   address: 300,
-  answer: 500, // jawaban uraian (mis. alasan, cita-cita, kekuatan)
+  answer: 1000, // jawaban uraian (mis. alasan, cita-cita, kekuatan)
   note: 300, // keterangan pada pertanyaan Ya/Tidak
   email: 200,
+  // Nomor (KTP, NPWP, BPJS, HP, telepon, kode pos, SIM) sebelum spasi/titik/tanda hubung dibuang.
+  numberInput: 30,
 } as const;
 
 // Pengalaman kerja dan pendidikan formal tidak ada di MAKS_BARIS; formal = satu baris per jenjang.
@@ -48,9 +50,14 @@ const requiredPattern = (max: number, test: (s: string) => boolean): Check => (v
   str(max)(v, mode) && (mode === "draft" || test((v as string).trim()));
 
 const digits = (min: number, max: number) => (s: string) => new RegExp(`^\\d{${min},${max}}$`).test(s);
-// Nomor HP: spasi dan "-" diabaikan, boleh diawali "+", 10–15 digit.
-export const isPhone = (s: string) => /^\+?\d{10,15}$/.test(s.replace(/[\s-]/g, ""));
-const isLandline = (s: string) => /^\+?\d{6,15}$/.test(s.replace(/[\s-]/g, ""));
+// Nomor boleh diketik dengan spasi, titik, atau tanda hubung (mis. NPWP "12.345.678.9-012.345");
+// validasi dan penyimpanan memakai hasil normalisasi. "+" di depan hanya dipertahankan untuk nomor telepon.
+export const normalizeDigits = (s: string) => s.replace(/[\s.\-]/g, "");
+export const isPhone = (s: string) => /^\+?\d{10,15}$/.test(normalizeDigits(s));
+const isLandline = (s: string) => /^\+?\d{6,15}$/.test(normalizeDigits(s));
+const onlyDigits = (min: number, max: number) => (s: string) => digits(min, max)(normalizeDigits(s));
+const numberField = (test: (s: string) => boolean, isRequired = false): Check =>
+  (isRequired ? requiredPattern : optionalPattern)(LIMITS.numberInput, test);
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 export function isCalendarDate(s: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
@@ -72,37 +79,63 @@ const orNull = (check: Check): Check => (v, mode) => v === null || check(v, mode
 const uniqueEnums = (values: readonly string[]): Check => v =>
   Array.isArray(v) && v.length <= values.length && new Set(v).size === v.length && v.every(x => values.includes(x));
 
-const alamat = shape({ alamat: str(LIMITS.address), kodePos: optionalPattern(5, digits(5, 5)) });
+const kodePos = numberField(onlyDigits(5, 5));
+const alamat = shape({ alamat: str(LIMITS.address), kodePos });
 const yaTidak = shape({ ya: nullableBool, keterangan: str(LIMITS.note) });
 
-const identitas = shape({
+// Aturan field identitas yang juga dipakai untuk daftar kesalahan di halaman (lihat personalDataIssues).
+const phone = (isRequired: boolean) => numberField(isPhone, isRequired);
+const landline = numberField(isLandline);
+const FIELD = {
   namaLengkap: required(LIMITS.fullName),
-  jenisKelamin: (v, mode) => (mode === "draft" ? nullableEnum(["L", "P"])(v, mode) : v === "L" || v === "P"),
+  jenisKelamin: ((v, mode) => (mode === "draft" ? nullableEnum(["L", "P"])(v, mode) : v === "L" || v === "P")) as Check,
   tempatLahir: required(LIMITS.name),
   // Final: tanggal nyata dengan usia 15–70 tahun (aturan yang sama dengan profil).
-  tanggalLahir: (v, mode) => str(10)(v, mode) && (mode === "draft" ? v === "" || isCalendarDate(v as string) : isValidBirthDate(v)),
+  tanggalLahir: ((v, mode) => str(10)(v, mode) && (mode === "draft" ? v === "" || isCalendarDate(v as string) : isValidBirthDate(v))) as Check,
+  alamatTetap: ((v, mode) => alamat(v, mode) && (mode === "draft" || ((v as { alamat: string }).alamat.trim().length >= 5))) as Check,
+  kodePos,
+  teleponRumah: landline,
+  noHandphone: phone(true),
+  noBpjs: numberField(onlyDigits(8, 16)),
+  noKtp: numberField(onlyDigits(16, 16), true),
+  masaBerlakuKtp: optionalPattern(LIMITS.short, s => s === "Seumur Hidup" || isCalendarDate(s)),
+  noNpwp: numberField(s => /^(\d{15}|\d{16})$/.test(normalizeDigits(s))),
+  noSim: numberField(onlyDigits(5, 20)),
+  tanggal: date,
+  email: requiredPattern(LIMITS.email, isEmail),
+  kontakNama: required(LIMITS.name),
+  kontakHubungan: required(LIMITS.name),
+  setuju: ((v, mode) => bool(v, mode) && (mode === "draft" || v === true)) as Check,
+  namaJelas: required(LIMITS.fullName),
+};
+
+const identitas = shape({
+  namaLengkap: FIELD.namaLengkap,
+  jenisKelamin: FIELD.jenisKelamin,
+  tempatLahir: FIELD.tempatLahir,
+  tanggalLahir: FIELD.tanggalLahir,
   namaPanggilan: str(LIMITS.name),
-  alamatTetap: (v, mode) => alamat(v, mode) && (mode === "draft" || ((v as { alamat: string }).alamat.trim().length >= 5)),
-  teleponRumah: optionalPattern(20, isLandline),
-  noHandphone: requiredPattern(20, isPhone),
-  noBpjsKetenagakerjaan: optionalPattern(16, digits(8, 16)),
-  noBpjsKesehatan: optionalPattern(16, digits(8, 16)),
+  alamatTetap: FIELD.alamatTetap,
+  teleponRumah: FIELD.teleponRumah,
+  noHandphone: FIELD.noHandphone,
+  noBpjsKetenagakerjaan: FIELD.noBpjs,
+  noBpjsKesehatan: FIELD.noBpjs,
   agama: str(LIMITS.short),
   golonganDarah: str(LIMITS.short),
-  noKtp: requiredPattern(16, digits(16, 16)),
-  masaBerlakuKtp: optionalPattern(LIMITS.short, s => s === "Seumur Hidup" || isCalendarDate(s)),
-  noNpwp: optionalPattern(16, s => /^(\d{15}|\d{16})$/.test(s)),
-  noSim: optionalPattern(20, digits(5, 20)),
+  noKtp: FIELD.noKtp,
+  masaBerlakuKtp: FIELD.masaBerlakuKtp,
+  noNpwp: FIELD.noNpwp,
+  noSim: FIELD.noSim,
   jenisSim: str(LIMITS.short),
   statusPerkawinan: nullableEnum(["bujangan", "menikah", "duda_janda"]),
   tanggalMenikah: date,
-  email: requiredPattern(LIMITS.email, isEmail),
+  email: FIELD.email,
   kontakDarurat: shape({
-    namaLengkap: required(LIMITS.name),
-    hubunganKeluarga: required(LIMITS.name),
+    namaLengkap: FIELD.kontakNama,
+    hubunganKeluarga: FIELD.kontakHubungan,
     alamatTetap: alamat,
-    teleponRumah: optionalPattern(20, isLandline),
-    noHandphone: requiredPattern(20, isPhone),
+    teleponRumah: landline,
+    noHandphone: phone(true),
   }),
 });
 
@@ -112,7 +145,7 @@ const keluarga = shape({
     pendidikanTerakhir: str(LIMITS.name), pekerjaan: str(LIMITS.name),
   })),
   anak: rows(MAKS_BARIS.anak, shape({ nama: str(LIMITS.name), tempatLahir: str(LIMITS.name), tanggalLahir: date, pendidikan: str(LIMITS.name) })),
-  ibuKandung: shape({ namaLengkap: str(LIMITS.name), alamat, noTelepon: optionalPattern(20, isLandline) }),
+  ibuKandung: shape({ namaLengkap: str(LIMITS.name), alamat, noTelepon: landline }),
   keluarga: rows(MAKS_BARIS.keluarga, shape({
     nama: str(LIMITS.name), hubungan: nullableEnum(["ayah", "kakak", "adik"]), umur: count(120), pekerjaanPendidikan: str(LIMITS.name),
   })),
@@ -172,24 +205,92 @@ const lainLain = shape({
 
 // Final: kedua persetujuan (termasuk UU PDP) wajib dicentang dan nama jelas diisi.
 const pernyataan = shape({
-  setujuKebenaranData: (v, mode) => bool(v, mode) && (mode === "draft" || v === true),
-  setujuPemrosesanData: (v, mode) => bool(v, mode) && (mode === "draft" || v === true),
-  namaJelas: required(LIMITS.fullName),
+  setujuKebenaranData: FIELD.setuju,
+  setujuPemrosesanData: FIELD.setuju,
+  namaJelas: FIELD.namaJelas,
   kota: str(LIMITS.short),
   tanggal: date,
 });
 
-const form = shape({
-  identitas, keluarga, pendidikan, pekerjaan,
-  referensi: rows(MAKS_BARIS.referensi, shape({ nama: str(LIMITS.name), jabatan: str(LIMITS.name), alamat: str(LIMITS.address) })),
-  minat, sosial, intern, lainLain, pernyataan,
-});
+const referensi = rows(MAKS_BARIS.referensi, shape({ nama: str(LIMITS.name), jabatan: str(LIMITS.name), alamat: str(LIMITS.address) }));
+const form = shape({ identitas, keluarga, pendidikan, pekerjaan, referensi, minat, sosial, intern, lainLain, pernyataan });
 
 export const validPersonalData = (data: unknown): data is PersonalDataForm => form(data, "final");
 export const validPersonalDataDraft = (data: unknown): data is PersonalDataForm => form(data, "draft");
 export const validPersonalDataBackup = (data: unknown): data is PersonalDataDraft =>
   isObj(data) && Object.keys(data).length === 2 && Number.isInteger(data.step) &&
   (data.step as number) >= 0 && (data.step as number) < WIZARD_STEPS && validPersonalDataDraft(data.form);
+
+// Hapus spasi, titik, dan tanda hubung dari semua field nomor (dipanggil klien sebelum kirim dan server sebelum simpan).
+export function normalizePersonalData(data: PersonalDataForm): PersonalDataForm {
+  const d = normalizeDigits;
+  const alamatN = (a: PersonalDataForm["identitas"]["alamatTetap"]) => ({ ...a, kodePos: d(a.kodePos) });
+  const { identitas: i, keluarga: k } = data;
+  return {
+    ...data,
+    identitas: {
+      ...i, alamatTetap: alamatN(i.alamatTetap), teleponRumah: d(i.teleponRumah), noHandphone: d(i.noHandphone),
+      noBpjsKetenagakerjaan: d(i.noBpjsKetenagakerjaan), noBpjsKesehatan: d(i.noBpjsKesehatan),
+      noKtp: d(i.noKtp), noNpwp: d(i.noNpwp), noSim: d(i.noSim),
+      kontakDarurat: {
+        ...i.kontakDarurat, alamatTetap: alamatN(i.kontakDarurat.alamatTetap),
+        teleponRumah: d(i.kontakDarurat.teleponRumah), noHandphone: d(i.kontakDarurat.noHandphone),
+      },
+    },
+    keluarga: { ...k, ibuKandung: { ...k.ibuKandung, alamat: alamatN(k.ibuKandung.alamat), noTelepon: d(k.ibuKandung.noTelepon) } },
+  };
+}
+
+// Tanggal hari ini (YYYY-MM-DD) di Asia/Jakarta, untuk tanggal pernyataan.
+export const todayInJakarta = (now = new Date()) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+
+// Daftar isian yang belum lengkap/tidak valid, dikelompokkan per langkah wizard (0–8).
+// Konsisten dengan validPersonalData: bila validator menolak sebuah bagian tanpa field yang cocok di daftar ini,
+// tetap muncul satu pesan umum untuk langkah tersebut.
+export type PersonalDataIssue = { step: number; label: string };
+type IssueRule = [step: number, label: string, get: (f: PersonalDataForm) => unknown, check: Check];
+const ISSUE_RULES: IssueRule[] = [
+  [0, "Nama lengkap", f => f.identitas.namaLengkap, FIELD.namaLengkap],
+  [0, "Jenis kelamin", f => f.identitas.jenisKelamin, FIELD.jenisKelamin],
+  [0, "Tempat lahir", f => f.identitas.tempatLahir, FIELD.tempatLahir],
+  [0, "Tanggal lahir (usia 15–70 tahun)", f => f.identitas.tanggalLahir, FIELD.tanggalLahir],
+  [0, "Alamat tetap (minimal 5 karakter)", f => f.identitas.alamatTetap, FIELD.alamatTetap],
+  [0, "Kode pos (5 digit)", f => f.identitas.alamatTetap.kodePos, FIELD.kodePos],
+  [0, "Nomor telepon rumah", f => f.identitas.teleponRumah, FIELD.teleponRumah],
+  [0, "Nomor handphone (10–15 digit)", f => f.identitas.noHandphone, FIELD.noHandphone],
+  [0, "Email", f => f.identitas.email, FIELD.email],
+  [0, "Nomor KTP/NIK (16 digit)", f => f.identitas.noKtp, FIELD.noKtp],
+  [0, "Masa berlaku KTP", f => f.identitas.masaBerlakuKtp, FIELD.masaBerlakuKtp],
+  [0, "Nomor NPWP (15 atau 16 digit)", f => f.identitas.noNpwp, FIELD.noNpwp],
+  [0, "Nomor BPJS Ketenagakerjaan (8–16 digit)", f => f.identitas.noBpjsKetenagakerjaan, FIELD.noBpjs],
+  [0, "Nomor BPJS Kesehatan (8–16 digit)", f => f.identitas.noBpjsKesehatan, FIELD.noBpjs],
+  [0, "Nomor SIM (5–20 digit)", f => f.identitas.noSim, FIELD.noSim],
+  [0, "Tanggal menikah", f => f.identitas.tanggalMenikah, FIELD.tanggal],
+  [0, "Kontak darurat: nama lengkap", f => f.identitas.kontakDarurat.namaLengkap, FIELD.kontakNama],
+  [0, "Kontak darurat: hubungan keluarga", f => f.identitas.kontakDarurat.hubunganKeluarga, FIELD.kontakHubungan],
+  [0, "Kontak darurat: kode pos (5 digit)", f => f.identitas.kontakDarurat.alamatTetap.kodePos, FIELD.kodePos],
+  [0, "Kontak darurat: nomor telepon rumah", f => f.identitas.kontakDarurat.teleponRumah, FIELD.teleponRumah],
+  [0, "Kontak darurat: nomor handphone (10–15 digit)", f => f.identitas.kontakDarurat.noHandphone, FIELD.noHandphone],
+  [1, "Ibu kandung: kode pos (5 digit)", f => f.keluarga.ibuKandung.alamat.kodePos, FIELD.kodePos],
+  [1, "Ibu kandung: nomor telepon", f => f.keluarga.ibuKandung.noTelepon, FIELD.teleponRumah],
+  [8, "Pernyataan kebenaran data", f => f.pernyataan.setujuKebenaranData, FIELD.setuju],
+  [8, "Persetujuan pemrosesan data pribadi", f => f.pernyataan.setujuPemrosesanData, FIELD.setuju],
+  [8, "Nama jelas", f => f.pernyataan.namaJelas, FIELD.namaJelas],
+];
+const STEP_SECTIONS: [step: number, check: (f: PersonalDataForm) => boolean][] = [
+  [0, f => identitas(f.identitas, "final")], [1, f => keluarga(f.keluarga, "final")], [2, f => pendidikan(f.pendidikan, "final")],
+  [3, f => pekerjaan(f.pekerjaan, "final")], [4, f => referensi(f.referensi, "final")], [5, f => minat(f.minat, "final")],
+  [6, f => sosial(f.sosial, "final")], [7, f => intern(f.intern, "final")],
+  [8, f => lainLain(f.lainLain, "final") && pernyataan(f.pernyataan, "final")],
+];
+export function personalDataIssues(data: PersonalDataForm): PersonalDataIssue[] {
+  const issues = ISSUE_RULES.filter(([, , get, check]) => !check(get(data), "final")).map(([step, label]) => ({ step, label }));
+  for (const [step, check] of STEP_SECTIONS) {
+    if (!check(data) && !issues.some(issue => issue.step === step)) issues.push({ step, label: "Periksa kembali isian di langkah ini" });
+  }
+  return issues.sort((a, b) => a.step - b.step);
+}
 
 // Ambil hanya bagian formulir dari dokumen tersimpan (tanpa candidateId, hasSubmitted, submittedAt, schemaVersion).
 export const formFromStored = (data: Record<string, unknown>) =>

@@ -1,8 +1,9 @@
+import type { TestStatus } from "@/lib/assessment/progress";
 import { isCompletedSession } from "@/lib/assessment/validation";
 import { db } from "@/lib/firebase";
 import { doc, getDocFromServer as getDoc } from "firebase/firestore";
 
-export type SubTestStatus = "completed" | "in_progress" | "available";
+export type SubTestStatus = TestStatus;
 
 export interface SubTest {
   id: string;
@@ -146,4 +147,11 @@ export function getInProgressTest(uid: string, completedIds: readonly string[] =
 // Selesai = "completed"; tes yang sedang dikerjakan = "in_progress"; sisanya "available".
 export function getStatuses(completion: boolean[], inProgressId: string | null): SubTestStatus[] {
   return completion.map((done, index) => (done ? "completed" : VISIBLE_SUB_TESTS[index].id === inProgressId ? "in_progress" : "available"));
+}
+
+// Status semua tes yang tampil di hub (dipakai hub dan beranda agar aturannya satu).
+export async function loadTestStatuses(uid: string): Promise<SubTestStatus[]> {
+  const completion = await loadCompletion(uid);
+  const completedIds = VISIBLE_SUB_TESTS.filter((_, index) => completion[index]).map((subTest) => subTest.id);
+  return getStatuses(completion, getInProgressTest(uid, completedIds));
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import { FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { isProfileComplete } from "../assessment/profile";
-import { sameEmail, type PersonalDataForm } from "../assessment/personal-data";
+import { normalizePersonalData, sameEmail, todayInJakarta, type PersonalDataForm } from "../assessment/personal-data";
 import { COLLECTIONS, isRecord, isCompletedSession, validAnswers, validDraft, type TestId } from "../assessment/validation";
 import { scoreIst, type IstAnswers } from "../ist/scorer";
 import { scoreKraepelin } from "../kraepelin/scorer";
@@ -53,9 +53,13 @@ export async function submitAssessment(db: Firestore, uid: string, test: TestId,
     const base = { candidateId: uid, submittedAt: FieldValue.serverTimestamp(), hasSubmitted: true, schemaVersion: 2, scoreSource: "server" };
     let result: Record<string, unknown>;
     if (test === "data-diri") {
-      // Only the validated form sections are stored; ownership and status fields are set here.
-      const form = body.answers as PersonalDataForm;
-      result = { ...form, identitas: { ...form.identitas, email: accountEmail }, candidateId: uid, hasSubmitted: true, submittedAt: FieldValue.serverTimestamp(), schemaVersion: 1 };
+      // Only the validated form sections are stored, with ID numbers normalized to digits. Ownership, status,
+      // the account email, and the declaration date (server clock, Asia/Jakarta) are set here.
+      const form = normalizePersonalData(body.answers as PersonalDataForm);
+      result = {
+        ...form, identitas: { ...form.identitas, email: accountEmail }, pernyataan: { ...form.pernyataan, tanggal: todayInJakarta() },
+        candidateId: uid, hasSubmitted: true, submittedAt: FieldValue.serverTimestamp(), schemaVersion: 1,
+      };
     }
     else if (test === "ist") result = { ...base, answers: body.answers, scores: scoreIst(body.answers as IstAnswers).scores };
     else if (test === "kraepelin") result = { ...base, answers: (body.answers as string[][]).map(values => ({ values })), ...scoreKraepelin(body.answers as string[][], GRID) };

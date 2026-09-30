@@ -1,6 +1,10 @@
 "use client";
 
+import { isProfileComplete } from "@/lib/assessment/profile";
+import { postLoginDestination } from "@/lib/assessment/progress";
 import { auth, db } from "@/lib/firebase";
+import { afterRegisterDestination } from "@/lib/navigation/guards";
+import { readNextParam } from "@/lib/navigation/next-path";
 import { EnvelopeIcon, EyeIcon, EyeSlashIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { FirebaseError } from "firebase/app";
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
@@ -33,8 +37,9 @@ export default function LoginPage() {
 
   async function redirectCandidate(uid: string) {
     const candidateSnapshot = await getDoc(doc(db, "hexacoCandidates", uid));
-    const hasSubmitted = candidateSnapshot.exists() && candidateSnapshot.data().hasSubmitted === true;
-    router.replace(hasSubmitted ? "/test-hub" : "/profile");
+    // Profil lengkap: ke tujuan ?next= (mis. formulir Data Diri) atau beranda; belum lengkap: ke profil dulu.
+    // Beranda (bukan hub) agar kandidat yang sudah menyelesaikan semua tes tidak ter-logout saat masuk kembali.
+    router.replace(postLoginDestination(isProfileComplete(candidateSnapshot.data()), readNextParam()));
   }
 
   function showAuthError(caughtError: unknown) {
@@ -55,7 +60,7 @@ export default function LoginPage() {
     try {
       if (isRegistering) {
         await createUserWithEmailAndPassword(auth, email.trim(), password);
-        router.replace("/profile");
+        router.replace(afterRegisterDestination(readNextParam()));
         return;
       }
       const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
